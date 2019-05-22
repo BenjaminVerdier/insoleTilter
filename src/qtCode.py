@@ -4,6 +4,7 @@ import time
 from enum import Enum, auto
 import math
 import copy
+import os
 
 #3rd party libs
 from PyQt5.QtCore import *
@@ -365,7 +366,9 @@ class MainWidget(QWidget):
             self.moldMesh.vertices[i][2] += zOffset
 
     def loadBasicMesh(self):
-        self.mesh = tm.load("../resources/basic_sole.stl")
+        path = str(os.path.dirname(os.path.realpath(__file__)))
+        dbg(path)
+        self.mesh = tm.load(path+"\\..\\resources\\basic_sole.stl")
         #We process the mesh so that it is centered and lays flat on the xy plane.
         #We then copy it t a display mesh that will sustain all the tranformation we apply
         self.mesh.vertices -= self.mesh.centroid
@@ -383,7 +386,8 @@ class MainWidget(QWidget):
     #Slot functions
     @pyqtSlot()
     def loadMesh(self):
-        self.meshPath,_ = QFileDialog.getOpenFileName(self, 'Open mesh', '../resources', '*.stl')
+        path = str(os.path.dirname(os.path.realpath(__file__)))
+        self.meshPath,_ = QFileDialog.getOpenFileName(self, 'Open mesh', path + "\\..\\resources", '*.stl')
         if self.meshPath == '':
             print("No file chosen")
             return
@@ -393,6 +397,8 @@ class MainWidget(QWidget):
         #We then copy it t a display mesh that will sustain all the tranformation we apply
 
         self.mesh.vertices -= self.mesh.centroid
+        transforms, probs = self.mesh.compute_stable_poses()
+        self.mesh.apply_transform(transforms[np.argmax(probs)])
         offset = np.amin(self.mesh.vertices,axis=0)[2]
         self.mesh.vertices -= [0,0,offset]
         self.soleMesh = copy.deepcopy(self.mesh)
