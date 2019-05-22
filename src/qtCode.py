@@ -51,14 +51,6 @@ class MainWidget(QWidget):
         mainLayout = QVBoxLayout()
         self.setLayout(mainLayout)
 
-
-        tabs = QTabWidget()
-
-        #2D view
-        self.canvas = pg.GraphicsLayoutWidget()
-        self.plot = self.canvas.addPlot()
-        self.pt = self.plot.plot(pen='w')
-
         #3D view
         self.view = gl.GLViewWidget()
         zgrid = gl.GLGridItem()
@@ -68,11 +60,7 @@ class MainWidget(QWidget):
         self.view.addItem(self.meshItem)
         self.view.setCameraPosition(distance=288,elevation=32,azimuth=324)
 
-        #Adding tabs
-        tabs.addTab(self.view, "3D")
-        tabs.addTab(self.canvas, "2D")
-
-        mainLayout.addWidget(tabs)
+        mainLayout.addWidget(self.view)
 
         #Buttons and stuff
         paramWidget = QWidget()
