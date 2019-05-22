@@ -55,7 +55,11 @@ class MainWidget(QWidget):
         self.view = gl.GLViewWidget()
         zgrid = gl.GLGridItem()
         zgrid.scale(20, 20, 20)
+        axis = gl.GLAxisItem()
+        axis.setSize(x=2, y=1, z=1)
+        axis.scale(100,100,100)
         self.view.addItem(zgrid)
+        self.view.addItem(axis)
         self.meshItem = gl.GLMeshItem()
         self.view.addItem(self.meshItem)
         self.view.setCameraPosition(distance=288,elevation=32,azimuth=324)
@@ -66,7 +70,7 @@ class MainWidget(QWidget):
         paramWidget = QWidget()
         paramLayout = QVBoxLayout()
         paramWidget.setLayout(paramLayout)
-        paramWidget.setMaximumHeight(450)
+        paramWidget.setMaximumHeight(500)
         mainLayout.addWidget(paramWidget)
         #stl load
         self.mesh = None
@@ -174,6 +178,7 @@ class MainWidget(QWidget):
 
         #shader choice
         shaderLabel = QLabel("Choose display shader:")
+        paramLayout.addWidget(shaderLabel)
         shaderCB = QComboBox(self)
         shaderCB.addItem("balloon")
         shaderCB.addItem("normalColor")
