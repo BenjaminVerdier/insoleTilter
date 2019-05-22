@@ -78,7 +78,7 @@ class MainWidget(QWidget):
         paramWidget = QWidget()
         paramLayout = QVBoxLayout()
         paramWidget.setLayout(paramLayout)
-        paramWidget.setMaximumHeight(250)
+        paramWidget.setMaximumHeight(450)
         mainLayout.addWidget(paramWidget)
         #stl load
         self.mesh = None
@@ -86,7 +86,29 @@ class MainWidget(QWidget):
         paramLayout.addWidget(loadMeshBtn)
         loadMeshBtn.clicked.connect(self.loadMesh)
 
+        #Z rotate
+        self.zRotAngle = 0
+        zRotAngleLabel = QLabel("Choose rotation angle around z:")
+        paramLayout.addWidget(zRotAngleLabel)
+        zRotAngleSb = QSpinBox()
+        zRotAngleSb.setRange(-180, 180)
+        zRotAngleSb.setSingleStep(1)
+        zRotAngleSb.setValue(0)
+        zRotAngleSb.valueChanged.connect(self.setZRotAngle)
+        paramLayout.addWidget(zRotAngleSb)
+
         #Rotation
+        self.linearDescentPortion = .5
+        linDescentLabel = QLabel("Choose portion of linearly descending angle:")
+        paramLayout.addWidget(linDescentLabel)
+        linDescentSb = QDoubleSpinBox()
+        linDescentSb.setRange(0,1)
+        linDescentSb.setSingleStep(.01)
+        linDescentSb.setValue(0.5)
+        linDescentSb.setDecimals(2)
+        linDescentSb.valueChanged.connect(self.setLinDescent)
+        paramLayout.addWidget(linDescentSb)
+
         self.rot = Rotation.FULL
         rotChoiceLabel = QLabel("Choose the rotation method:")
         paramLayout.addWidget(rotChoiceLabel)
@@ -116,36 +138,80 @@ class MainWidget(QWidget):
         paramLayout.addWidget(rotAngleSb)
 
         #Choice of display between sole, insole and mold
+        modelCkBx = QCheckBox("Compute Insole and Mold model")
+        modelCkBx.stateChanged.connect(self.toggleModelCompute)
+        paramLayout.addWidget(modelCkBx)
         self.disp = Display.SOLE
         displayChoiceLabel = QLabel("Choose the model to display:")
         paramLayout.addWidget(displayChoiceLabel)
         dispLayout = QHBoxLayout()
         dispGroup = QButtonGroup(paramWidget)
-        rb2 = QRadioButton("Sole")
-        rb2.setChecked(True)
-        rb2.disp = Display.SOLE
-        rb2.toggled.connect(self.toggleDisp)
-        dispGroup.addButton(rb2)
-        dispLayout.addWidget(rb2)
-        rb2 = QRadioButton("Insole")
-        rb2.disp = Display.INSOLE
-        rb2.toggled.connect(self.toggleDisp)
-        dispGroup.addButton(rb2)
-        dispLayout.addWidget(rb2)
-        rb2 = QRadioButton("Mold")
-        rb2.disp = Display.MOLD
-        rb2.toggled.connect(self.toggleDisp)
-        dispGroup.addButton(rb2)
-        dispLayout.addWidget(rb2)
+        self.rbSole = QRadioButton("Sole")
+        self.rbSole.setChecked(True)
+        self.rbSole.disp = Display.SOLE
+        self.rbSole.toggled.connect(self.toggleDisp)
+        dispGroup.addButton(self.rbSole)
+        dispLayout.addWidget(self.rbSole)
+        self.rbInsole = QRadioButton("Insole")
+        self.rbInsole.disp = Display.INSOLE
+        self.rbInsole.toggled.connect(self.toggleDisp)
+        self.rbInsole.setEnabled(False)
+        dispGroup.addButton(self.rbInsole)
+        dispLayout.addWidget(self.rbInsole)
+        self.rbMold = QRadioButton("Mold")
+        self.rbMold.disp = Display.MOLD
+        self.rbMold.toggled.connect(self.toggleDisp)
+        self.rbMold.setEnabled(False)
+        dispGroup.addButton(self.rbMold)
+        dispLayout.addWidget(self.rbMold)
         paramLayout.addLayout(dispLayout)
 
-        self.loadMesh()
+        #export buttons
+        expLayout = QHBoxLayout()
+        expBtn = QPushButton("Export Sole Model")
+        expBtn.model = Display.SOLE
+        expBtn.clicked.connect(self.exportModel)
+        expLayout.addWidget(expBtn)
+        self.expBtnInsole = QPushButton("Export Insole Model")
+        self.expBtnInsole.model = Display.INSOLE
+        self.expBtnInsole.clicked.connect(self.exportModel)
+        self.expBtnInsole.setEnabled(False)
+        expLayout.addWidget(self.expBtnInsole)
+        self.expBtnMold = QPushButton("Export Mold Model")
+        self.expBtnMold.model = Display.MOLD
+        self.expBtnMold.clicked.connect(self.exportModel)
+        self.expBtnMold.setEnabled(False)
+        expLayout.addWidget(self.expBtnMold)
+        paramLayout.addLayout(expLayout)
+
+        #shader choice
+        shaderLabel = QLabel("Choose display shader:")
+        shaderCB = QComboBox(self)
+        shaderCB.addItem("balloon")
+        shaderCB.addItem("normalColor")
+        shaderCB.addItem("viewNormalColor")
+        shaderCB.addItem("shaded")
+        shaderCB.setCurrentIndex(1)
+        shaderCB.activated.connect(self.shaderSelect)
+        paramLayout.addWidget(shaderCB)
+
+        #Values
+        self.recompute = True
+        self.shader = "normalColor"
+        self.glOptions = "opaque"
+        self.computeInsoleAndMold = False
+
+        self.loadBasicMesh()
 
     #Utility functions
     def displayMesh(self):
-        self.resetMeshesValues()
-        self.rotate()
-        self.makeInsoleAndMold()
+        if self.recompute:
+            self.resetMeshesValues()
+            self.rotateZ()
+            self.rotate()
+            if self.computeInsoleAndMold:
+                self.makeInsoleAndMold()
+            self.recompute = False
         mesh = None
         if self.disp == Display.SOLE:
             mesh = self.soleMesh
@@ -155,20 +221,45 @@ class MainWidget(QWidget):
             mesh = self.moldMesh
         glmesh = gl.MeshData(vertexes=mesh.vertices, faces=mesh.faces)
         self.view.removeItem(self.meshItem)
-        self.meshItem = gl.GLMeshItem(meshdata=glmesh)
+        self.meshItem = gl.GLMeshItem(meshdata=glmesh, shader=self.shader, glOptions=self.glOptions)
         self.view.addItem(self.meshItem)
 
-    def rotate(self):
+    def computeAngles(self) -> list:
         agl = math.radians(self.rotAngle)
-        rotMatrix = np.array([[math.cos(agl), 0, math.sin(agl)],[0, 1, 0],[-math.sin(agl), 0, math.cos(agl)]])
+        angles = [0]*len(self.soleMesh.vertices)
+        minX = np.amin(self.soleMesh.vertices,axis=0)[0]
+        maxX = np.amax(self.soleMesh.vertices,axis=0)[0]
+        mid = minX + (maxX - minX) * (1-self.linearDescentPortion)
+        for i in range(len(self.soleMesh.vertices)):
+            if self.soleMesh.vertices[i][0] < mid:
+                angles[i] = agl
+            else:
+                angles[i] = agl * (1 - (self.soleMesh.vertices[i][0] - mid)/(maxX - mid))
+        return angles
+
+    def rotate(self):
+        agls = self.computeAngles()
         if self.rot == Rotation.FULL:
-            for i in range(len(self.mesh.vertices)):
-                v = np.array(self.mesh.vertices[i])
+            for i in range(len(self.soleMesh.vertices)):
+                rotMatrix = np.array([[1,0,0],[0,math.cos(agls[i]),-math.sin(agls[i])],[0,math.sin(agls[i]),math.cos(agls[i])]])
+                v = np.array(self.soleMesh.vertices[i])
                 self.soleMesh.vertices[i] = np.matmul(rotMatrix,v)
         else:
-            for i in range(len(self.mesh.vertices)):
-                v = np.array(self.mesh.vertices[i])
+            for i in range(len(self.soleMesh.vertices)):
+                rotMatrix = np.array([[1,0,0],[0,math.cos(agls[i]),-math.sin(agls[i])],[0,math.sin(agls[i]),math.cos(agls[i])]])
+                v = np.array(self.soleMesh.vertices[i])
                 self.soleMesh.vertices[i][2] = np.matmul(rotMatrix,v)[2]
+        offset = np.amin(self.soleMesh.vertices,axis=0)[2] - 2
+        self.soleMesh.vertices -= [0,0,offset]
+
+    def rotateZ(self):
+        agl = math.radians(self.zRotAngle)
+        c = math.cos(agl)
+        s = math.sin(agl)
+        rotMatrix = np.array([[c,-s,0],[s,c,0],[0,0,1]])
+        for i in range(len(self.mesh.vertices)):
+            v = np.array(self.mesh.vertices[i])
+            self.soleMesh.vertices[i] = np.matmul(rotMatrix,v)
 
     def resetMeshesValues(self):
         self.soleMesh = copy.deepcopy(self.mesh)
@@ -233,7 +324,6 @@ class MainWidget(QWidget):
         faces.append([lastIndex - 1, n, lastIndex])
         bottomFaces = faces[n2:]
         self.insoleMesh = tm.Trimesh(vertices=verts, faces=faces)
-        self.insoleMesh.export("../resources/truc.stl")
 
         #----------------------------Mold
         #first step: extract bottom of insole
@@ -273,20 +363,38 @@ class MainWidget(QWidget):
         bloc = tm.Trimesh(vertices=bottomVertices, faces=bottomFaces)
 
         self.moldMesh = bloc.difference(self.insoleMesh)
-        bloc.export("../resources/machin.stl")
-        self.soleMesh.export("../resources/sole.stl")
-        self.moldMesh.export("../resources/bidule.stl")
+        #We flip the mold for better viewing
+        zOffset = np.amax(self.soleMesh.vertices,axis=0)[2]
+        rotMatrix = np.array([[-1, 0, 0],[0, 1, 0],[0, 0, -1]])
+        for i in range(len(self.moldMesh.vertices)):
+            v = np.array(self.moldMesh.vertices[i])
+            self.moldMesh.vertices[i] = np.matmul(rotMatrix,v)
+            self.moldMesh.vertices[i][2] += zOffset
+
+    def loadBasicMesh(self):
+        self.mesh = tm.load("../resources/basic_sole.stl")
+        #We process the mesh so that it is centered and lays flat on the xy plane.
+        #We then copy it t a display mesh that will sustain all the tranformation we apply
+        self.mesh.vertices -= self.mesh.centroid
+        transforms, probs = self.mesh.compute_stable_poses()
+        self.mesh.apply_transform(transforms[np.argmax(probs)])
+        offset = np.amin(self.mesh.vertices,axis=0)[2]
+        self.mesh.vertices -= [0,0,offset]
+        self.soleMesh = copy.deepcopy(self.mesh)
+        self.insoleMesh = copy.deepcopy(self.mesh)
+        self.moldMesh = copy.deepcopy(self.mesh)
+        self.recompute = True
+        self.displayMesh()
 
 
     #Slot functions
     @pyqtSlot()
     def loadMesh(self):
-        #self.meshPath,_ = QFileDialog.getOpenFileName(self, 'Open mesh', '../resources', '*.stl')
-        #f self.meshPath == '':
-        #    print("No file chosen")
-        #    return
-        #self.mesh = tm.load(self.meshPath)
-        self.mesh = tm.load("../resources/basic_sole.stl")
+        self.meshPath,_ = QFileDialog.getOpenFileName(self, 'Open mesh', '../resources', '*.stl')
+        if self.meshPath == '':
+            print("No file chosen")
+            return
+        self.mesh = tm.load(self.meshPath)
 
         #We process the mesh so that it is centered and lays flat on the xy plane.
         #We then copy it t a display mesh that will sustain all the tranformation we apply
@@ -297,6 +405,7 @@ class MainWidget(QWidget):
         self.soleMesh = copy.deepcopy(self.mesh)
         self.insoleMesh = copy.deepcopy(self.mesh)
         self.moldMesh = copy.deepcopy(self.mesh)
+        self.recompute = True
         self.displayMesh()
 
     @pyqtSlot()
@@ -304,12 +413,21 @@ class MainWidget(QWidget):
         rb = self.sender()
         if rb.isChecked():
             self.rot = rb.rot
+            self.recompute = True
             self.displayMesh()
 
     @pyqtSlot()
     def setRotAngle(self):
         sb = self.sender()
         self.rotAngle = sb.value()
+        self.recompute = True
+        self.displayMesh()
+
+    @pyqtSlot()
+    def setZRotAngle(self):
+        sb = self.sender()
+        self.zRotAngle = sb.value()
+        self.recompute = True
         self.displayMesh()
 
     @pyqtSlot()
@@ -318,6 +436,55 @@ class MainWidget(QWidget):
         if rb.isChecked():
             self.disp = rb.disp
             self.displayMesh()
+
+
+    @pyqtSlot()
+    def exportModel(self):
+        btn = self.sender()
+        mesh = None
+        if btn.model == Display.SOLE:
+            mesh = self.soleMesh
+        if btn.model == Display.INSOLE:
+            mesh = self.insoleMesh
+        if btn.model == Display.MOLD:
+            mesh = self.moldMesh
+        path = QFileDialog.getSaveFileName(self, "Save Model", "../resources", "STL(*.stl)")[0]
+        if path == "":
+            print("No file chosen")
+            return
+        mesh.export(path)
+
+    @pyqtSlot()
+    def shaderSelect(self):
+        cb = self.sender()
+        self.shader = cb.currentText()
+        if self.shader == "balloon":
+            self.glOptions = "additive"
+        else:
+            self.glOptions = "opaque"
+        self.meshItem.setShader(self.shader)
+        self.meshItem.setGLOptions(self.glOptions)
+
+    @pyqtSlot()
+    def toggleModelCompute(self):
+        cb = self.sender()
+        self.computeInsoleAndMold = cb.isChecked()
+        if self.computeInsoleAndMold:
+            self.recompute = True
+            self.displayMesh()
+        else:
+            self.rbSole.setChecked(True)
+        self.rbInsole.setEnabled(self.computeInsoleAndMold)
+        self.rbMold.setEnabled(self.computeInsoleAndMold)
+        self.expBtnInsole.setEnabled(self.computeInsoleAndMold)
+        self.expBtnMold.setEnabled(self.computeInsoleAndMold)
+
+    @pyqtSlot()
+    def setLinDescent(self):
+        sb = self.sender()
+        self.linearDescentPortion = sb.value()
+        self.recompute = True
+        self.displayMesh()
 
 #residue of development, can be handy
     @pyqtSlot()
