@@ -315,19 +315,19 @@ class MainWidget(QWidget):
             newVertex[2] = zPos
             verts.append(newVertex)
             #Create new extruded faces
-            faces.append([indices[i-1], n + i, n + i - 1])
-            faces.append([indices[i], n + i, indices[i-1]])
+            faces.append([n + i, indices[i-1], n + i - 1])
+            faces.append([n + i, indices[i], indices[i-1]])
         #Create last extruded faces
-        faces.append([indices[-1], n, n + len(indices) - 1])
-        faces.append([indices[0], n, indices[-1]])
+        faces.append([n, indices[-1], n + len(indices) - 1])
+        faces.append([n, indices[0], indices[-1]])
         #Create bottom faces, centroid is in 0,0,0 so we take 0,0,zPos
         verts.append([0,0,zPos])
         lastIndex = len(verts) -1
         n2 = len(faces)
         bottomVertices = verts[n:]
         for i in range(n, lastIndex):
-            faces.append([i, i+1, lastIndex])
-        faces.append([lastIndex - 1, n, lastIndex])
+            faces.append([i+1, i, lastIndex])
+        faces.append([n, lastIndex - 1, lastIndex])
         bottomFaces = faces[n2:]
         self.insoleMesh = tm.Trimesh(vertices=verts, faces=faces)
 
@@ -350,11 +350,11 @@ class MainWidget(QWidget):
             newVertex[2] = zPos2
             bottomVertices.append(newVertex)
             #Create new extruded faces
-            bottomFaces.append([nBottom + i - 1, i, i - 1])
-            bottomFaces.append([nBottom + i, i, nBottom + i - 1])
+            bottomFaces.append([i, nBottom + i - 1, i - 1])
+            bottomFaces.append([i, nBottom + i, nBottom + i - 1])
         #Create last extruded faces
-        bottomFaces.append([2*nBottom - 2, 0, nBottom - 2])
-        bottomFaces.append([nBottom, 0, 2*nBottom - 2])
+        bottomFaces.append([0, 2*nBottom - 2, nBottom - 2])
+        bottomFaces.append([0, nBottom, 2*nBottom - 2])
 
         #Top faces
         bottomVertices.append([0,0,zPos2])
@@ -456,8 +456,8 @@ class MainWidget(QWidget):
                         newPtsIndexes[(orphanVertsOrdered[i+1],otherPoint)] = len(verts)
                         verts.append(newPt2)
                     #We create the corresponding faces
-                    faces.append([newPtsIndexes[(orph,otherPoint)], orphanVertsOrdered[i+1], orph])
-                    faces.append([newPtsIndexes[(orph,otherPoint)], newPtsIndexes[(orphanVertsOrdered[i+1],otherPoint)], orphanVertsOrdered[i+1]])
+                    faces.append([orphanVertsOrdered[i+1], newPtsIndexes[(orph,otherPoint)], orph])
+                    faces.append([newPtsIndexes[(orphanVertsOrdered[i+1],otherPoint)], newPtsIndexes[(orph,otherPoint)], orphanVertsOrdered[i+1]])
                 else:
                     #Two points are missing, we get their indices
                     otherPoint1 = -1
@@ -486,7 +486,7 @@ class MainWidget(QWidget):
                         newPtsIndexes[(orph,otherPoint2)] = len(verts)
                         verts.append(newPt2)
                     #We create the corresponding face
-                    faces.append([newPtsIndexes[(orph,otherPoint1)], newPtsIndexes[(orph,otherPoint2)], orph])
+                    faces.append([newPtsIndexes[(orph,otherPoint2)], newPtsIndexes[(orph,otherPoint1)], orph])
 
         #We might need one last face
         lastPoint = orphanVertsOrdered[-1]
@@ -526,7 +526,7 @@ class MainWidget(QWidget):
                     newPtsIndexes[(lastPoint,otherPoint2)] = len(verts)
                     verts.append(newPt2)
                 #We create the corresponding face
-                faces.append([newPtsIndexes[(lastPoint,otherPoint1)], newPtsIndexes[(lastPoint,otherPoint2)], lastPoint])
+                faces.append([newPtsIndexes[(lastPoint,otherPoint2)], newPtsIndexes[(lastPoint,otherPoint1)], lastPoint])
 
         #Remove vertices, modify faces
         for i in sorted(facesToDel, reverse=True):
