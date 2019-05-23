@@ -13,7 +13,6 @@ import trimesh as tm
 import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
-from scipy.spatial import ConvexHull, convex_hull_plot_2d
 
 #custom files
 from debugThingies import *
@@ -37,7 +36,7 @@ class MainWindow(QMainWindow):
         mw = MainWidget()
         self.setCentralWidget(mw)
         self.setWindowTitle('Insole Tilter')
-        self.resize(1300,1200)
+        self.resize(1300,1800)
 
         self.show()
 
@@ -71,7 +70,7 @@ class MainWidget(QWidget):
         paramWidget = QWidget()
         paramLayout = QVBoxLayout()
         paramWidget.setLayout(paramLayout)
-        paramWidget.setMaximumHeight(500)
+        paramWidget.setMaximumHeight(600)
         mainLayout.addWidget(paramWidget)
         #stl load
         self.mesh = None
@@ -91,6 +90,10 @@ class MainWidget(QWidget):
         paramLayout.addWidget(zRotAngleSb)
 
         #Cut location
+        self.doCut = False
+        cutCkBx = QCheckBox("Cut part of the model")
+        cutCkBx.stateChanged.connect(self.toggleCut)
+        paramLayout.addWidget(cutCkBx)
         self.cutLocation = .9
         cutLabel = QLabel("Choose where to cut should be located:")
         paramLayout.addWidget(cutLabel)
@@ -214,7 +217,8 @@ class MainWidget(QWidget):
         if self.recompute:
             self.resetMeshesValues()
             self.rotateZ()
-            self.cutSoleX()
+            if self.doCut:
+                self.cutSoleX()
             self.rotate()
             if self.computeInsoleAndMold:
                 self.makeInsoleAndMold()
@@ -648,6 +652,13 @@ class MainWidget(QWidget):
     def setCutLocation(self):
         sb = self.sender()
         self.cutLocation = sb.value()
+        self.recompute = True
+        self.displayMesh()
+
+    @pyqtSlot()
+    def toggleCut(self):
+        cb = self.sender()
+        self.doCut = cb.isChecked()
         self.recompute = True
         self.displayMesh()
 
