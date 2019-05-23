@@ -90,6 +90,18 @@ class MainWidget(QWidget):
         zRotAngleSb.valueChanged.connect(self.setZRotAngle)
         paramLayout.addWidget(zRotAngleSb)
 
+        #Cut location
+        self.cutLocation = .9
+        cutLabel = QLabel("Choose where to cut should be located:")
+        paramLayout.addWidget(cutLabel)
+        cutSb = QDoubleSpinBox()
+        cutSb.setRange(0,1)
+        cutSb.setSingleStep(.01)
+        cutSb.setValue(0.9)
+        cutSb.setDecimals(2)
+        cutSb.valueChanged.connect(self.setCutLocation)
+        paramLayout.addWidget(cutSb)
+
         #Rotation
         self.linearDescentPortion = .5
         linDescentLabel = QLabel("Choose portion of linearly descending angle:")
@@ -202,6 +214,7 @@ class MainWidget(QWidget):
         if self.recompute:
             self.resetMeshesValues()
             self.rotateZ()
+            self.cutSoleX()
             self.rotate()
             if self.computeInsoleAndMold:
                 self.makeInsoleAndMold()
@@ -257,15 +270,14 @@ class MainWidget(QWidget):
 
     def resetMeshesValues(self):
         self.soleMesh = copy.deepcopy(self.mesh)
-        self.insoleMesh = copy.deepcopy(self.mesh)
         self.moldMesh = copy.deepcopy(self.mesh)
 
     def getOuterVerticesIndexes(self) -> list:
         #Convex hull does not work because the 2d projection is not convex.
         #So we check the edges that only belong to one polygon
-        numUniqueEdges = len(self.insoleMesh.edges_unique)
+        numUniqueEdges = len(self.soleMesh.edges_unique)
         borderEdges = np.zeros(numUniqueEdges)
-        for face in self.insoleMesh.faces_unique_edges:
+        for face in self.soleMesh.faces_unique_edges:
             borderEdges[face[0]] += 1
             borderEdges[face[1]] += 1
             borderEdges[face[2]] += 1
@@ -273,9 +285,9 @@ class MainWidget(QWidget):
         #Now that we have the edges, we have all the vertices indices.
         #We need to order them tho.
         #Since every vertex is part of two edges, we take the first edges, take the next vertex and so on
-        neighbors = self.insoleMesh.vertex_neighbors
+        neighbors = self.soleMesh.vertex_neighbors
         #the casting to list might be useless
-        indices_unordered = [list(x) for x in self.insoleMesh.edges_unique[edges]]
+        indices_unordered = [list(x) for x in self.soleMesh.edges_unique[edges]]
         indices_ordered = copy.copy(indices_unordered[0])
         for i in range(len(edges) - 2):
             eds = [x for x in indices_unordered if indices_ordered[-1] in x]
@@ -289,7 +301,7 @@ class MainWidget(QWidget):
         #----------------------------Insole
         zPos = np.amin(self.soleMesh.vertices,axis=0)[2] - 2
         indices = self.getOuterVerticesIndexes()
-        n = len(self.mesh.vertices)
+        n = len(self.soleMesh.vertices)
         #New vertices and faces vectors for new mesh
         verts = [list(x) for x in self.soleMesh.vertices]
         faces = [list(x) for x in self.soleMesh.faces]
@@ -381,6 +393,153 @@ class MainWidget(QWidget):
         self.moldMesh = copy.deepcopy(self.mesh)
         self.recompute = True
         self.displayMesh()
+
+    def cutSoleX(self):
+        #let's copy our vertices and faces
+        verts = [np.array(x) for x in self.soleMesh.vertices]
+        faces = [list(x) for x in self.soleMesh.faces]
+        #indices of vertices to delete
+        indDel = []
+        minX = np.amin(verts,axis=0)[0]
+        maxX = np.amax(verts,axis=0)[0]
+        mid = minX + (maxX - minX) * self.cutLocation
+        for i in range(len(verts)):
+            if verts[i][0] > mid:
+                indDel.append(i)
+        #indices of faces to delete
+        facesToDel = []
+        for i in range(len(faces)):
+            if len(list(set(faces[i]) & set(indDel))) > 0:
+                facesToDel.append(i)
+        #indices of orphan vertices
+        orphanVerts = []
+        for i in facesToDel:
+            for j in faces[i]:
+                if not j in indDel:
+                    orphanVerts.append(j)
+        orphanVerts = list(set(orphanVerts))
+        #ordering by y:
+        orphAndY = [(i, verts[i][1]) for i in orphanVerts]
+        sorted_by_second = sorted(orphAndY, key=lambda tup: tup[1], reverse = True)
+        orphanVertsOrdered = [x[0] for x in sorted_by_second]
+        #Computation to straighten the edge
+        newPtsIndexes = dict()
+        for i in range(len(orphanVertsOrdered)-1):
+            orph = orphanVertsOrdered[i]
+            facesWithOrph = []
+            for f in facesToDel:
+                if orph in faces[f]:
+                    facesWithOrph.append(faces[f])
+            for f in facesWithOrph:
+                if orphanVertsOrdered[i-1] in f:
+                    #We did it when we were doing i-1
+                    continue
+                if orphanVertsOrdered[i+1] in f:
+                    #Only 1 point is missing, we get its index
+                    otherPoint = -1
+                    for pt in f:
+                        if not pt == orph and not pt == orphanVertsOrdered[i+1]:
+                            otherPoint = pt
+                            break
+                    #we create two new points: one between orph and otherpoint, one between orph+1 and otherPoint
+                    orphVal = verts[orph]
+                    orphPlus1Val = verts[orphanVertsOrdered[i+1]]
+                    otherPtVal = verts[otherPoint]
+                    if not (orph,otherPoint) in newPtsIndexes:
+                        k1 = (mid - orphVal[0])/(otherPtVal[0] - orphVal[0])
+                        newPt1 = orphVal + k1 * (otherPtVal - orphVal)
+                        newPtsIndexes[(orph,otherPoint)] = len(verts)
+                        verts.append(newPt1)
+                    if not (orphanVertsOrdered[i+1],otherPoint) in newPtsIndexes:
+                        k2 = (mid - orphPlus1Val[0])/(otherPtVal[0] - orphPlus1Val[0])
+                        newPt2 = orphPlus1Val + k2 * (otherPtVal - orphPlus1Val)
+                        newPtsIndexes[(orphanVertsOrdered[i+1],otherPoint)] = len(verts)
+                        verts.append(newPt2)
+                    #We create the corresponding faces
+                    faces.append([newPtsIndexes[(orph,otherPoint)], orphanVertsOrdered[i+1], orph])
+                    faces.append([newPtsIndexes[(orph,otherPoint)], newPtsIndexes[(orphanVertsOrdered[i+1],otherPoint)], orphanVertsOrdered[i+1]])
+                else:
+                    #Two points are missing, we get their indices
+                    otherPoint1 = -1
+                    otherPoint2 = -1
+                    for pt in f:
+                        if not pt == orph:
+                            if otherPoint1 == -1:
+                                otherPoint1 = pt
+                            else:
+                                otherPoint2 = pt
+                    #We make sure otherPoint1 in the leftmost (biggest y)
+                    if verts[otherPoint1][1] < verts[otherPoint2][1]:
+                        otherPoint1, otherPoint2 = otherPoint2, otherPoint1
+                    #We create two new points
+                    orphVal = verts[orph]
+                    otherPt1Val = verts[otherPoint1]
+                    otherPt2Val = verts[otherPoint2]
+                    if not (orph,otherPoint1) in newPtsIndexes:
+                        k1 = (mid - orphVal[0])/(otherPt1Val[0] - orphVal[0])
+                        newPt1 = orphVal + k1 * (otherPt1Val - orphVal)
+                        newPtsIndexes[(orph,otherPoint1)] = len(verts)
+                        verts.append(newPt1)
+                    if not (orph,otherPoint2) in newPtsIndexes:
+                        k2 = (mid - orphVal[0])/(otherPt2Val[0] - orphVal[0])
+                        newPt2 = orphVal + k2 * (otherPt2Val - orphVal)
+                        newPtsIndexes[(orph,otherPoint2)] = len(verts)
+                        verts.append(newPt2)
+                    #We create the corresponding face
+                    faces.append([newPtsIndexes[(orph,otherPoint1)], newPtsIndexes[(orph,otherPoint2)], orph])
+
+        #We might need one last face
+        lastPoint = orphanVertsOrdered[-1]
+        facesWithOrph = []
+        for f in facesToDel:
+            if lastPoint in faces[f]:
+                facesWithOrph.append(faces[f])
+        for f in facesWithOrph:
+            if orphanVertsOrdered[-2] in f:
+                #We already did it
+                continue
+            else:
+                #Two points are missing, we get their indices
+                otherPoint1 = -1
+                otherPoint2 = -1
+                for pt in f:
+                    if not pt == lastPoint:
+                        if otherPoint1 == -1:
+                            otherPoint1 = pt
+                        else:
+                            otherPoint2 = pt
+                #We make sure otherPoint1 in the leftmost (biggest y)
+                if verts[otherPoint1][1] < verts[otherPoint2][1]:
+                    otherPoint1, otherPoint2 = otherPoint2, otherPoint1
+                #We create two new points
+                orphVal = verts[lastPoint]
+                otherPt1Val = verts[otherPoint1]
+                otherPt2Val = verts[otherPoint2]
+                if not (lastPoint,otherPoint1) in newPtsIndexes:
+                    k1 = (mid - orphVal[0])/(otherPt1Val[0] - orphVal[0])
+                    newPt1 = orphVal + k1 * (otherPt1Val - orphVal)
+                    newPtsIndexes[(lastPoint,otherPoint1)] = len(verts)
+                    verts.append(newPt1)
+                if not (lastPoint,otherPoint2) in newPtsIndexes:
+                    k2 = (mid - orphVal[0])/(otherPt2Val[0] - orphVal[0])
+                    newPt2 = orphVal + k2 * (otherPt2Val - orphVal)
+                    newPtsIndexes[(lastPoint,otherPoint2)] = len(verts)
+                    verts.append(newPt2)
+                #We create the corresponding face
+                faces.append([newPtsIndexes[(lastPoint,otherPoint1)], newPtsIndexes[(lastPoint,otherPoint2)], lastPoint])
+
+        #Remove vertices, modify faces
+        for i in sorted(facesToDel, reverse=True):
+            del faces[i]
+        for face in faces:
+            for k in range(3):
+                face[k] -= sum(1 for i in indDel if i < face[k])
+        for i in sorted(indDel, reverse=True):
+            del verts[i]
+
+        self.soleMesh = tm.Trimesh(vertices=verts, faces=faces)
+
+
 
 
     #Slot functions
@@ -482,6 +641,13 @@ class MainWidget(QWidget):
     def setLinDescent(self):
         sb = self.sender()
         self.linearDescentPortion = sb.value()
+        self.recompute = True
+        self.displayMesh()
+
+    @pyqtSlot()
+    def setCutLocation(self):
+        sb = self.sender()
+        self.cutLocation = sb.value()
         self.recompute = True
         self.displayMesh()
 
