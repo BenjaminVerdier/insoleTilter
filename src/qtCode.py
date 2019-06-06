@@ -62,6 +62,8 @@ class MainWidget(QWidget):
         self.view.addItem(axis)
         self.meshItem = gl.GLMeshItem()
         self.view.addItem(self.meshItem)
+        self.planeXMesh = None
+        self.planeZMesh = None
         self.view.setCameraPosition(distance=288,elevation=32,azimuth=324)
 
         mainLayout.addWidget(self.view)
@@ -70,13 +72,21 @@ class MainWidget(QWidget):
         paramWidget = QWidget()
         paramLayout = QVBoxLayout()
         paramWidget.setLayout(paramLayout)
-        paramWidget.setMaximumHeight(600)
+        paramWidget.setMaximumHeight(800)
         mainLayout.addWidget(paramWidget)
-        #stl load
+        #mesh load and invertion
+        meshLoadLayout = QHBoxLayout()
+
         self.mesh = None
         loadMeshBtn = QPushButton("Load mesh")
-        paramLayout.addWidget(loadMeshBtn)
+        meshLoadLayout.addWidget(loadMeshBtn)
         loadMeshBtn.clicked.connect(self.loadMesh)
+
+        self.invertNormals = False
+        NrmInvCkBx = QCheckBox("Invert normals (top should look purple-ish in normalColor shader)")
+        NrmInvCkBx.stateChanged.connect(self.toggleInvertNormals)
+        meshLoadLayout.addWidget(NrmInvCkBx)
+        paramLayout.addLayout(meshLoadLayout)
 
         #Z rotate
         self.zRotAngle = 0
@@ -89,21 +99,52 @@ class MainWidget(QWidget):
         zRotAngleSb.valueChanged.connect(self.setZRotAngle)
         paramLayout.addWidget(zRotAngleSb)
 
-        #Cut location
-        self.doCut = False
-        cutCkBx = QCheckBox("Cut part of the model")
-        cutCkBx.stateChanged.connect(self.toggleCut)
-        paramLayout.addWidget(cutCkBx)
-        self.cutLocation = .9
-        cutLabel = QLabel("Choose where to cut should be located:")
-        paramLayout.addWidget(cutLabel)
+        #Cuts locations
+        cutsLayout = QHBoxLayout()
+
+        cutXLayout = QVBoxLayout()
+        self.doCutX = False
+        cutCkBx = QCheckBox("Cut part of the model on X axis")
+        cutCkBx.stateChanged.connect(self.toggleCutX)
+        cutXLayout.addWidget(cutCkBx)
+        self.cutXLocation = .9
+        cutLabel = QLabel("Choose where the cut should be located:")
+        cutXLayout.addWidget(cutLabel)
         cutSb = QDoubleSpinBox()
         cutSb.setRange(0,1)
         cutSb.setSingleStep(.01)
         cutSb.setValue(0.9)
         cutSb.setDecimals(2)
-        cutSb.valueChanged.connect(self.setCutLocation)
-        paramLayout.addWidget(cutSb)
+        cutSb.valueChanged.connect(self.setCutXLocation)
+        cutXLayout.addWidget(cutSb)
+        self.showPlaneCutX = False
+        cutPlaneCkBx = QCheckBox("Show cut location")
+        cutPlaneCkBx.stateChanged.connect(self.toggleShowPlaneCutX)
+        cutXLayout.addWidget(cutPlaneCkBx)
+
+        cutZLayout = QVBoxLayout()
+        self.doCutZ = False
+        cutCkBx = QCheckBox("Cut part of the model on Z axis")
+        cutCkBx.stateChanged.connect(self.toggleCutZ)
+        cutZLayout.addWidget(cutCkBx)
+        self.cutZLocation = .5
+        cutLabel = QLabel("Choose where the cut should be located:")
+        cutZLayout.addWidget(cutLabel)
+        cutSb = QDoubleSpinBox()
+        cutSb.setRange(0,1)
+        cutSb.setSingleStep(.01)
+        cutSb.setValue(0.5)
+        cutSb.setDecimals(2)
+        cutSb.valueChanged.connect(self.setCutZLocation)
+        cutZLayout.addWidget(cutSb)
+        self.showPlaneCutZ = False
+        cutPlaneCkBx = QCheckBox("Show cut location")
+        cutPlaneCkBx.stateChanged.connect(self.toggleShowPlaneCutZ)
+        cutZLayout.addWidget(cutPlaneCkBx)
+
+        cutsLayout.addLayout(cutXLayout)
+        cutsLayout.addLayout(cutZLayout)
+        paramLayout.addLayout(cutsLayout)
 
         #Rotation
         self.linearDescentPortion = .5
@@ -217,7 +258,9 @@ class MainWidget(QWidget):
         if self.recompute:
             self.resetMeshesValues()
             self.rotateZ()
-            if self.doCut:
+            if self.doCutZ:
+                self.cutTopOfModel()
+            if self.doCutX:
                 self.cutSoleX()
             self.rotate()
             if self.computeInsoleAndMold:
@@ -383,7 +426,6 @@ class MainWidget(QWidget):
 
     def loadBasicMesh(self):
         path = str(os.path.dirname(os.path.realpath(__file__)))
-        dbg(path)
         self.mesh = tm.load(path+"\\..\\resources\\basic_sole.stl")
         #We process the mesh so that it is centered and lays flat on the xy plane.
         #We then copy it t a display mesh that will sustain all the tranformation we apply
@@ -398,7 +440,7 @@ class MainWidget(QWidget):
         self.recompute = True
         self.displayMesh()
 
-    def cutSoleX(self):
+    def cutSoleXDeprecated(self):
         #let's copy our vertices and faces
         verts = [np.array(x) for x in self.soleMesh.vertices]
         faces = [list(x) for x in self.soleMesh.faces]
@@ -543,18 +585,103 @@ class MainWidget(QWidget):
 
         self.soleMesh = tm.Trimesh(vertices=verts, faces=faces)
 
+    def displayPlaneCutX(self):
+        zpos = np.amax(self.soleMesh.vertices,axis=0)[2]
+        zneg = np.amin(self.soleMesh.vertices,axis=0)[2]
+        xpos = np.amax(self.soleMesh.vertices,axis=0)[0]
+        ypos = np.amax(self.soleMesh.vertices,axis=0)[1]
+        yneg = np.amin(self.soleMesh.vertices,axis=0)[1]
+        minX = np.amin(self.soleMesh.vertices,axis=0)[0]
+        xneg = minX + (xpos - minX) * self.cutXLocation
+        #cube = tm.creation.box(extents=(maxLength, maxWidth, maxHeight))
+        planeVerts = np.array([[xneg,yneg,zneg],[xneg,ypos,zneg],[xneg,yneg,zpos],[xneg,ypos,zpos]])
+        planeFaces = np.array([[0,1,2],[3,2,1]])
 
+        glmesh = gl.MeshData(vertexes=planeVerts, faces=planeFaces)
+        if self.planeXMesh:
+            self.view.removeItem(self.planeXMesh)
+        self.planeXMesh = gl.GLMeshItem(meshdata=glmesh, shader=self.shader, glOptions=self.glOptions)
+        self.view.addItem(self.planeXMesh)
+
+    def cutSoleX(self):
+        zpos = np.amax(self.soleMesh.vertices,axis=0)[2]
+        zneg = np.amin(self.soleMesh.vertices,axis=0)[2]
+        xpos = np.amax(self.soleMesh.vertices,axis=0)[0]
+        ypos = np.amax(self.soleMesh.vertices,axis=0)[1]
+        yneg = np.amin(self.soleMesh.vertices,axis=0)[1]
+        minX = np.amin(self.soleMesh.vertices,axis=0)[0]
+        xneg = minX + (xpos - minX) * self.cutXLocation
+        #cube = tm.creation.box(extents=(maxLength, maxWidth, maxHeight))
+        cubeVerts = [[xpos,ypos,zneg],[xpos,yneg,zneg],[xneg,yneg,zneg],[xneg,ypos,zneg],[xpos,ypos,zpos],[xpos,yneg,zpos],[xneg,yneg,zpos],[xneg,ypos,zpos]]
+        cubeFaces = [[0,4,1],[4,5,1],[1,5,2],[5,6,2],[2,6,3],[6,7,3],[3,7,0],[7,4,0],[7,4,5],[7,5,6],[3,0,1],[3,1,2]]
+        cube = tm.Trimesh(vertices=cubeVerts, faces=cubeFaces)
+        self.soleMesh = self.soleMesh.difference(cube)
+
+
+    def displayPlaneCutZ(self):
+        z = np.amax(self.soleMesh.vertices,axis=0)[2]
+        xpos = np.amax(self.soleMesh.vertices,axis=0)[0]
+        ypos = np.amax(self.soleMesh.vertices,axis=0)[1]
+        xneg = np.amin(self.soleMesh.vertices,axis=0)[0]
+        yneg = np.amin(self.soleMesh.vertices,axis=0)[1]
+        zmin = np.amin(self.soleMesh.vertices,axis=0)[2]
+
+        zToCut = zmin + (z - zmin) * self.cutZLocation
+        #cube = tm.creation.box(extents=(maxLength, maxWidth, maxHeight))
+        planeVerts = np.array([[xpos,ypos,zToCut],[xpos,yneg,zToCut],[xneg,yneg,zToCut],[xneg,ypos,zToCut]])
+        planeFaces = np.array([[0,1,2],[2,3,0]])
+
+        glmesh = gl.MeshData(vertexes=planeVerts, faces=planeFaces)
+        if self.planeZMesh:
+            self.view.removeItem(self.planeZMesh)
+        self.planeZMesh = gl.GLMeshItem(meshdata=glmesh, shader=self.shader, glOptions=self.glOptions)
+        self.view.addItem(self.planeZMesh)
+
+    def cutTopOfModel(self):
+        verts = [np.array(x) for x in self.soleMesh.vertices]
+        faces = [list(x) for x in self.soleMesh.faces]
+        z = np.amax(verts,axis=0)[2]
+        xpos = np.amax(verts,axis=0)[0]
+        ypos = np.amax(verts,axis=0)[1]
+        xneg = np.amin(verts,axis=0)[0]
+        yneg = np.amin(verts,axis=0)[1]
+        zmin = np.amin(verts,axis=0)[2]
+
+        zToCut = zmin + (z - zmin) * self.cutZLocation
+        #cube = tm.creation.box(extents=(maxLength, maxWidth, maxHeight))
+        cubeVerts = [[xpos,ypos,zToCut],[xpos,yneg,zToCut],[xneg,yneg,zToCut],[xneg,ypos,zToCut],[xpos,ypos,z],[xpos,yneg,z],[xneg,yneg,z],[xneg,ypos,z]]
+        cubeFaces = [[0,4,1],[4,5,1],[1,5,2],[5,6,2],[2,6,3],[6,7,3],[3,7,0],[7,4,0],[7,4,5],[7,5,6],[3,0,1],[3,1,2]]
+        cube = tm.Trimesh(vertices=cubeVerts, faces=cubeFaces)
+        newSole = self.soleMesh.difference(cube)
+        verts = [np.array(x) for x in newSole.vertices]
+        faces = [list(x) for x in newSole.faces]
+        indicesOfMaxHeight = []
+        for i in range(len(verts)):
+            if abs(verts[i][2] - zToCut) < 0.0001:
+                indicesOfMaxHeight.append(i)
+        facesToDel = []
+        for i in range(len(faces)):
+            if all(v in indicesOfMaxHeight for v in faces[i]):
+                facesToDel.append(i)
+
+        for i in sorted(facesToDel, reverse=True):
+            del faces[i]
+
+        self.soleMesh = tm.Trimesh(vertices=verts, faces=faces)
 
 
     #Slot functions
     @pyqtSlot()
     def loadMesh(self):
         path = str(os.path.dirname(os.path.realpath(__file__)))
-        self.meshPath,_ = QFileDialog.getOpenFileName(self, 'Open mesh', path + "\\..\\resources", '*.stl')
+        self.meshPath,_ = QFileDialog.getOpenFileName(self, 'Open mesh', path + "\\..\\resources", 'Mesh (*.stl *.obj)')
         if self.meshPath == '':
             print("No file chosen")
             return
         self.mesh = tm.load(self.meshPath)
+
+        if self.invertNormals:
+            self.mesh.invert()
 
         #We process the mesh so that it is centered and lays flat on the xy plane.
         #We then copy it t a display mesh that will sustain all the tranformation we apply
@@ -648,19 +775,67 @@ class MainWidget(QWidget):
         self.recompute = True
         self.displayMesh()
 
+    #TODO: refactor 6 following methods below to only have 3
     @pyqtSlot()
-    def setCutLocation(self):
+    def setCutXLocation(self):
         sb = self.sender()
-        self.cutLocation = sb.value()
+        self.cutXLocation = sb.value()
+        self.recompute = True
+        self.displayMesh()
+
+
+    @pyqtSlot()
+    def setCutZLocation(self):
+        sb = self.sender()
+        self.cutZLocation = sb.value()
         self.recompute = True
         self.displayMesh()
 
     @pyqtSlot()
-    def toggleCut(self):
+    def toggleCutX(self):
         cb = self.sender()
-        self.doCut = cb.isChecked()
+        self.doCutX = cb.isChecked()
         self.recompute = True
         self.displayMesh()
+
+    @pyqtSlot()
+    def toggleCutZ(self):
+        cb = self.sender()
+        self.doCutZ = cb.isChecked()
+        self.recompute = True
+        self.displayMesh()
+
+    pyqtSlot()
+    def toggleShowPlaneCutX(self):
+        cb = self.sender()
+        if cb.isChecked():
+            self.displayPlaneCutX()
+        else:
+            if self.planeXMesh:
+                self.view.removeItem(self.planeXMesh)
+                self.planeXMesh = None
+
+    pyqtSlot()
+    def toggleShowPlaneCutZ(self):
+        cb = self.sender()
+        if cb.isChecked():
+            self.displayPlaneCutZ()
+        else:
+            if self.planeZMesh:
+                self.view.removeItem(self.planeZMesh)
+                self.planeZMesh = None
+
+    @pyqtSlot()
+    def toggleInvertNormals(self):
+        cb = self.sender()
+        self.invertNormals = cb.isChecked()
+        self.mesh.invert()
+        self.soleMesh.invert()
+        self.insoleMesh.invert()
+        self.moldMesh.invert()
+        self.displayMesh()
+
+
 
 #residue of development, can be handy
     @pyqtSlot()
