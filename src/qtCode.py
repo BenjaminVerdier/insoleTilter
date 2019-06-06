@@ -737,7 +737,7 @@ class MainWidget(QWidget):
             mesh = self.insoleMesh
         if btn.model == Display.MOLD:
             mesh = self.moldMesh
-        path = QFileDialog.getSaveFileName(self, "Save Model", "../resources", "STL(*.stl)")[0]
+        path = QFileDialog.getSaveFileName(self, "Save Model", "../saved", "STL(*.stl)")[0]
         if path == "":
             print("No file chosen")
             return
