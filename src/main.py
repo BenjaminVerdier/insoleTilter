@@ -1,4 +1,4 @@
-from qtCode import *
+from qtMain import *
 
 def main():
     app = QApplication(sys.argv)
