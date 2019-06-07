@@ -111,6 +111,7 @@ class rotateXWidget(baseWidget):
                 self.rotatedMesh.vertices[i][2] = np.matmul(rotMatrix,v)[2]
         offset = np.amin(self.rotatedMesh.vertices,axis=0)[2] - 2
         self.rotatedMesh.vertices -= [0,0,offset]
+        #tm.repair.fix_normals(self.rotatedMesh)
 
 
     @pyqtSlot()

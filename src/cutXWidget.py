@@ -53,7 +53,14 @@ class cutXWidget(baseWidget):
             else:
                 mesh = self.soleMesh
             self.recompute = False
-            self.toTransmit = mesh
+
+            self.toTransmit = copy.deepcopy(mesh)
+
+            #Move mesh so centroid is 0,0,0 again
+            self.toTransmit.vertices -= self.toTransmit.centroid
+            offset = np.amin(self.toTransmit.vertices,axis=0)[2]
+            self.toTransmit.vertices -= [0,0,offset]
+
         glmesh = gl.MeshData(vertexes=mesh.vertices, faces=mesh.faces)
         if not self.meshItem is None:
             self.view.removeItem(self.meshItem)
@@ -62,11 +69,11 @@ class cutXWidget(baseWidget):
 
 
     def displayPlaneCutX(self):
-        zpos = np.amax(self.soleMesh.vertices,axis=0)[2]
-        zneg = np.amin(self.soleMesh.vertices,axis=0)[2]
+        zpos = np.amax(self.soleMesh.vertices,axis=0)[2]+5
+        zneg = np.amin(self.soleMesh.vertices,axis=0)[2]-5
         xpos = np.amax(self.soleMesh.vertices,axis=0)[0]
-        ypos = np.amax(self.soleMesh.vertices,axis=0)[1]
-        yneg = np.amin(self.soleMesh.vertices,axis=0)[1]
+        ypos = np.amax(self.soleMesh.vertices,axis=0)[1]+5
+        yneg = np.amin(self.soleMesh.vertices,axis=0)[1]-5
         minX = np.amin(self.soleMesh.vertices,axis=0)[0]
         xneg = minX + (xpos - minX) * self.cutXLocation
         #cube = tm.creation.box(extents=(maxLength, maxWidth, maxHeight))
@@ -81,11 +88,11 @@ class cutXWidget(baseWidget):
 
 
     def cutX(self):
-        zpos = np.amax(self.soleMesh.vertices,axis=0)[2]
-        zneg = np.amin(self.soleMesh.vertices,axis=0)[2]
+        zpos = np.amax(self.soleMesh.vertices,axis=0)[2]+5
+        zneg = np.amin(self.soleMesh.vertices,axis=0)[2]-5
         xpos = np.amax(self.soleMesh.vertices,axis=0)[0]
-        ypos = np.amax(self.soleMesh.vertices,axis=0)[1]
-        yneg = np.amin(self.soleMesh.vertices,axis=0)[1]
+        ypos = np.amax(self.soleMesh.vertices,axis=0)[1]+5
+        yneg = np.amin(self.soleMesh.vertices,axis=0)[1]-5
         minX = np.amin(self.soleMesh.vertices,axis=0)[0]
         xneg = minX + (xpos - minX) * self.cutXLocation
         #cube = tm.creation.box(extents=(maxLength, maxWidth, maxHeight))
@@ -93,6 +100,9 @@ class cutXWidget(baseWidget):
         cubeFaces = [[0,4,1],[4,5,1],[1,5,2],[5,6,2],[2,6,3],[6,7,3],[3,7,0],[7,4,0],[7,4,5],[7,5,6],[3,0,1],[3,1,2]]
         cube = tm.Trimesh(vertices=cubeVerts, faces=cubeFaces)
         self.soleMeshWithXCut = self.soleMesh.difference(cube)
+        #tm.repair.fix_normals(self.soleMeshWithXCut)
+
+
 
     @pyqtSlot()
     def setCutXLocation(self):

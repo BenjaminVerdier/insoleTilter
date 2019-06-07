@@ -192,6 +192,8 @@ class insoleMoldExportWidget(baseWidget):
             self.moldMesh.vertices[i] = np.matmul(rotMatrix,v)
             self.moldMesh.vertices[i][2] += zOffset
 
+        tm.repair.fix_normals(self.insoleMesh)
+        tm.repair.fix_normals(self.moldMesh)
 
     @pyqtSlot()
     def toggleDisp(self):

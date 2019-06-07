@@ -113,6 +113,7 @@ class cutZWidget(baseWidget):
             del faces[i]
 
         self.soleMeshWithZCut = tm.Trimesh(vertices=verts, faces=faces)
+        #tm.repair.fix_normals(self.soleMeshWithZCut)
 
     @pyqtSlot()
     def setCutZLocation(self):
