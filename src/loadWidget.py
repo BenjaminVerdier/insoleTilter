@@ -10,6 +10,9 @@ class loadWidget(baseWidget):
 
     def initCustomUI(self):
         self.toTransmit = None
+
+        #Adding straight blue line on X axis to help with placement
+        self.view.addItem(gl.GLLinePlotItem(pos=np.array([[0,0,0],[500,0,0]]),width=50,color=[0,0,1,1]))
         #Buttons and stuff, to be modified in child class
         paramWidget = QWidget()
         paramLayout = QVBoxLayout()
