@@ -1,5 +1,9 @@
 from baseWidget import *
 
+import splipy as sp
+import math
+
+
 class cutZWidget(baseWidget):
 
     def __init__(self, nextTab = -1):
@@ -8,6 +12,8 @@ class cutZWidget(baseWidget):
     def initCustomUI(self):
 
         self.planeZMesh = None
+        self.curvePlot = None
+        self.ctrlPtsPlot = None
         #Buttons and stuff, to be modified in child class
         paramWidget = QWidget()
         paramLayout = QVBoxLayout()
@@ -15,33 +21,47 @@ class cutZWidget(baseWidget):
         paramWidget.setMaximumHeight(300)
         self.mainLayout.addWidget(paramWidget)
 
-        self.doCutZ = False
-        cutCkBx = QCheckBox("Cut part of the model on Z axis")
-        cutCkBx.stateChanged.connect(self.toggleCutZ)
-        paramLayout.addWidget(cutCkBx)
-        self.cutZLocation = .5
         cutLabel = QLabel("Choose where the cut should be located:")
         paramLayout.addWidget(cutLabel)
-        cutSb = QDoubleSpinBox()
-        cutSb.setRange(0,1)
-        cutSb.setSingleStep(.01)
-        cutSb.setValue(0.5)
-        cutSb.setDecimals(2)
-        cutSb.valueChanged.connect(self.setCutZLocation)
-        paramLayout.addWidget(cutSb)
-        self.showPlaneCutZ = False
-        cutPlaneCkBx = QCheckBox("Show cut location")
-        cutPlaneCkBx.stateChanged.connect(self.toggleShowPlaneCutZ)
-        paramLayout.addWidget(cutPlaneCkBx)
+        #We start with 8 control points
+        ctPtsLayout = QHBoxLayout()
+        self.controlpoints = 8*[[0,0,0]]
+        for i in range(8):
+            name = "Ctrl Pt "+ str(i+1)
+            ctpLabel = QLabel(name)
+            ctPtsLayout.addWidget(ctpLabel)
+            btnUp = QPushButton("^")
+            btnUp.setMinimumSize(5,5)
+            btnUp.resize(25,25)
+            btnUp.ctpIndex = i
+            btnUp.val = 5
+            btnUp.pressed.connect(self.ctrlPtsMoved)
+            ctPtsLayout.addWidget(btnUp)
+            btnDown = QPushButton("v")
+            btnDown.setMinimumSize(5,5)
+            btnDown.resize(25,25)
+            btnDown.ctpIndex = i
+            btnDown.val = -5
+            btnDown.pressed.connect(self.ctrlPtsMoved)
+            ctPtsLayout.addWidget(btnDown)
+        paramLayout.addLayout(ctPtsLayout)
+
+        self.doCutZ = False
+
+        #Btn to recompute spline
+        splineBtn = QPushButton("Recompute Spline")
+        splineBtn.pressed.connect(self.recomputeSpline)
+        paramLayout.addWidget(splineBtn)
 
         self.initDoneButtonAndShader(paramLayout)
-        pass
+
 
     def start(self, transmittedData):
         self.soleMesh = transmittedData
         self.soleMeshWithZCut = copy.deepcopy(self.soleMesh)
         self.recompute = True
         self.displayMesh()
+        self.initSpline()
 
     def displayMesh(self):
         if self.recompute:
@@ -85,7 +105,7 @@ class cutZWidget(baseWidget):
     def cutZ(self):
         verts = [np.array(x) for x in self.soleMesh.vertices]
         faces = [list(x) for x in self.soleMesh.faces]
-        z = np.amax(verts,axis=0)[2]
+        z = np.amax(verts,axis=0)[2]#Add 10?
         xpos = np.amax(verts,axis=0)[0]
         ypos = np.amax(verts,axis=0)[1]
         xneg = np.amin(verts,axis=0)[0]
@@ -115,30 +135,89 @@ class cutZWidget(baseWidget):
         self.soleMeshWithZCut = tm.Trimesh(vertices=verts, faces=faces)
         #tm.repair.fix_normals(self.soleMeshWithZCut)
 
-    @pyqtSlot()
-    def setCutZLocation(self):
-        sb = self.sender()
-        self.cutZLocation = sb.value()
-        self.recompute = True
-        self.displayMesh()
-        self.displayPlaneCutZ()
+    def initSpline(self):
+        verts = [np.array(x) for x in self.soleMesh.vertices]
+        self.z = np.amax(verts,axis=0)[2]
+        xpos = np.amax(verts,axis=0)[0]
+        def circle_sampler(n):
+            angle_increment = (3 * math.pi) / (2*n)
+            points = []
+            for i in range(n):
+                angle = (math.pi/4) + i*angle_increment
+                points += [[xpos*math.cos(angle),xpos*math.sin(angle),self.z]]
+            return points
+
+        controlpoints = circle_sampler(8)
+        contour = []
+        for pt in controlpoints:
+            while not self.soleMesh.ray.intersects_any([[0,0,self.z]],[[pt[0],pt[1],pt[2]-self.z]])[0]:
+                pt[2] -= 1
+            contour += [self.soleMesh.ray.intersects_location([[0,0,self.z]],[[pt[0],pt[1],pt[2]-self.z]])[0][0]]
+
+        self.controlpoints = contour
+        self.displayControlPoints()
+        self.doSpline()
+
+    def displayControlPoints(self):
+        if self.ctrlPtsPlot:
+            self.view.removeItem(self.ctrlPtsPlot)
+        self.ctrlPtsPlot = gl.GLScatterPlotItem(pos=np.array(self.controlpoints),size=10,color=[0,0,1,1])
+        self.view.addItem(self.ctrlPtsPlot)
+
+    def doSpline(self):
+
+        def get_spline_points(cont_pts, order = 4, sampling = 150):
+            n_control_points = len(cont_pts)
+            kn = [0] * order + list(range(1, n_control_points - order + 1)) + [n_control_points - order + 1] * order
+            basis = sp.BSplineBasis(order=order, knots=kn)
+            curve = sp.Curve(basis, cont_pts)
+            t = np.linspace(0,n_control_points - order + 1,sampling)
+            x = curve.evaluate(t)
+            return x
+
+        spline_pts_not_projected = get_spline_points(self.controlpoints, sampling=300)
+        #spline_pts_projected = [[0,0,z]]
+        spline_pts_projected = []
+        for pt in spline_pts_not_projected:
+            initZ = pt[2]
+            while not self.soleMesh.ray.intersects_any([[0,0,self.z]],[[pt[0],pt[1],pt[2]-self.z]])[0]:
+                pt[2] -= 1
+            pjt = self.soleMesh.ray.intersects_location([[0,0,self.z]],[[pt[0],pt[1],pt[2]-self.z]])[0][0]
+            spline_pts_projected += [[pjt[0],pjt[1],initZ]]
+        #After that, need to project x to insole, so same as before with the rays, but without the while loop (hopefully)
+
+        if self.curvePlot:
+            self.view.removeItem(self.curvePlot)
+        self.curvePlot = gl.GLLinePlotItem(pos=np.array(spline_pts_projected),width=5,color=[1,0,0,1])
+        self.view.addItem(self.curvePlot)
+
+        #faces = []
+        #for i in range(1,len(spline_pts_projected)-1):
+        #    faces += [[i,i+1,0]]
+        #faces += [[len(spline_pts_projected)-1,1,0]]
+
+        #glmesh = gl.MeshData(vertexes=np.array(spline_pts_projected), faces=np.array(faces))
+        #if self.planeZMesh:
+        #    self.view.removeItem(self.planeZMesh)
+        #self.planeZMesh = gl.GLMeshItem(meshdata=glmesh, shader=self.shader, glOptions=self.glOptions)
+        #self.view.addItem(self.planeZMesh)
+
 
     @pyqtSlot()
-    def toggleCutZ(self):
-        cb = self.sender()
-        self.doCutZ = cb.isChecked()
-        self.recompute = True
-        self.displayMesh()
+    def ctrlPtsMoved(self):
+        btn = self.sender()
+        ctp = self.controlpoints[btn.ctpIndex].copy()
+        a = math.sqrt(ctp[1]*ctp[1] + ctp[0]*ctp[0])
+        b = self.z - ctp[2]
+        alpha = math.atan(b/a)
+        ctp[2] -= a * math.tan(alpha-math.radians(btn.val)) - b
 
-    pyqtSlot()
-    def toggleShowPlaneCutZ(self):
-        cb = self.sender()
+        if self.soleMesh.ray.intersects_any([[0,0,self.z]],[[ctp[0],ctp[1],ctp[2]-self.z]])[0]:
+            ctp = self.soleMesh.ray.intersects_location([[0,0,self.z]],[[ctp[0],ctp[1],ctp[2]-self.z]])[0][0]
+        self.controlpoints[btn.ctpIndex] = ctp
+        self.displayControlPoints()
 
-        if cb.isChecked():
-            self.displayZPlane = True
-            self.displayPlaneCutZ()
-        else:
-            self.displayZPlane = False
-            if self.planeZMesh:
-                self.view.removeItem(self.planeZMesh)
-                self.planeZMesh = None
+
+    @pyqtSlot()
+    def recomputeSpline(self):
+        self.doSpline()
