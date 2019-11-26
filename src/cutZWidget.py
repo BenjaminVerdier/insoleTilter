@@ -53,6 +53,11 @@ class cutZWidget(baseWidget):
         splineBtn.pressed.connect(self.recomputeSpline)
         paramLayout.addWidget(splineBtn)
 
+        #Btn to cut
+        cutBtn = QPushButton("Cut")
+        cutBtn.pressed.connect(self.doCut)
+        paramLayout.addWidget(cutBtn)
+
         self.initDoneButtonAndShader(paramLayout)
 
 
@@ -68,7 +73,7 @@ class cutZWidget(baseWidget):
             self.resetNextTabs()
             mesh = None
             if self.doCutZ:
-                self.cutZ()
+                self.cut()
                 mesh = self.soleMeshWithZCut
             else:
                 mesh = self.soleMesh
@@ -186,6 +191,8 @@ class cutZWidget(baseWidget):
             spline_pts_projected += [[pjt[0],pjt[1],initZ]]
         #After that, need to project x to insole, so same as before with the rays, but without the while loop (hopefully)
 
+        self.spline = spline_pts_projected
+
         if self.curvePlot:
             self.view.removeItem(self.curvePlot)
         self.curvePlot = gl.GLLinePlotItem(pos=np.array(spline_pts_projected),width=5,color=[1,0,0,1])
@@ -202,6 +209,58 @@ class cutZWidget(baseWidget):
         #self.planeZMesh = gl.GLMeshItem(meshdata=glmesh, shader=self.shader, glOptions=self.glOptions)
         #self.view.addItem(self.planeZMesh)
 
+    def cut(self):
+        partToCut = [[0,0,self.z]]
+        partToCut += [[2*self.spline[0][0]+500, 2*self.spline[0][1],2*self.spline[0][2] - self.z]]
+        n = len(self.spline) -1
+        for pt in self.spline:
+            partToCut += [[2*pt[0], 2*pt[1],2*pt[2] - self.z]]
+        partToCut += [[2*self.spline[n][0]+500, 2*self.spline[n][1],2*self.spline[n][2] - self.z]]
+        n = len(partToCut)
+        faces = []
+        for i in range(1,n-1):
+            faces += [[i,i+1,0]]
+        faces += [[n-1,1,0]]
+        for i in range(len(partToCut)):
+            partToCut += [[partToCut[i][0], partToCut[i][1],partToCut[i][2] + self.z]]
+        for i in range(n+1,2*n-1):
+            faces += [[i,i+1,n]]
+        faces += [[2*n-1,n+1,n]]
+        for i in range(1,n-1):
+            faces += [[i,i+n,i+1]]
+            faces += [[i+n+1,i+1,i+n]]
+        faces += [[n-1,2*n-1,1]]
+        faces += [[n+1,1,2*n-1]]
+
+
+
+        rem = tm.Trimesh(vertices=partToCut, faces=faces)
+        self.soleMeshWithZCut = self.soleMesh.difference(rem)
+        verts = list(self.soleMeshWithZCut.vertices)
+        faces = list(self.soleMeshWithZCut.faces)
+        vertToRemove = -1
+        for i in range(len(verts)):
+            if abs(verts[i][0]) < 1 and abs(verts[i][1]) < 1 and abs(verts[i][2]-self.z) < 1:
+                vertToRemove = i
+                break
+        del verts[vertToRemove]
+        facesToDel = []
+        for i in range(len(faces)):
+            if vertToRemove in faces[i]:
+                facesToDel.append(i)
+
+        for i in sorted(facesToDel, reverse=True):
+            del faces[i]
+
+        for f in self.soleMeshWithZCut.faces:
+            if f[0] > vertToRemove:
+                f[0] -= 1
+            if f[1] > vertToRemove:
+                f[1] -= 1
+            if f[2] > vertToRemove:
+                f[2] -= 1
+
+        self.soleMeshWithZCut = tm.Trimesh(verts,faces)
 
     @pyqtSlot()
     def ctrlPtsMoved(self):
@@ -217,6 +276,12 @@ class cutZWidget(baseWidget):
         self.controlpoints[btn.ctpIndex] = ctp
         self.displayControlPoints()
 
+
+    @pyqtSlot()
+    def doCut(self):
+        self.doCutZ = True
+        self.recompute = True
+        self.displayMesh()
 
     @pyqtSlot()
     def recomputeSpline(self):
