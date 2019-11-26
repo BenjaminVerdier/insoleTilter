@@ -184,6 +184,60 @@ class insoleMoldExportWidget(baseWidget):
         bloc = tm.Trimesh(vertices=bottomVertices, faces=bottomFaces)
 
         self.moldMesh = bloc.difference(self.insoleMesh)
+
+
+        verts = list(self.moldMesh.vertices)
+        faces = list(self.moldMesh.faces)
+        vertToRemove = -1
+
+        for i in range(len(verts)):
+            if abs(verts[i][0]) < 0.1 and abs(verts[i][1]) < 0.1:
+                vertToRemove = i
+                break
+        if vertToRemove > -1:
+            del verts[vertToRemove]
+            facesToDel = []
+            for i in range(len(faces)):
+                if vertToRemove in faces[i]:
+                    facesToDel.append(i)
+
+            for i in sorted(facesToDel, reverse=True):
+                del faces[i]
+
+            for f in self.moldMesh.faces:
+                if f[0] > vertToRemove:
+                    f[0] -= 1
+                if f[1] > vertToRemove:
+                    f[1] -= 1
+                if f[2] > vertToRemove:
+                    f[2] -= 1
+
+        for i in range(len(verts)):
+            if abs(verts[i][0]) < 0.1 and abs(verts[i][1]) < 0.1:
+                vertToRemove = i
+                break
+        if vertToRemove > -1:
+            del verts[vertToRemove]
+            facesToDel = []
+            for i in range(len(faces)):
+                if vertToRemove in faces[i]:
+                    facesToDel.append(i)
+
+            for i in sorted(facesToDel, reverse=True):
+                del faces[i]
+
+            for f in self.moldMesh.faces:
+                if f[0] > vertToRemove:
+                    f[0] -= 1
+                if f[1] > vertToRemove:
+                    f[1] -= 1
+                if f[2] > vertToRemove:
+                    f[2] -= 1
+
+        self.moldMesh = tm.Trimesh(verts,faces)
+
+
+
         #We flip the mold for better viewing
         zOffset = np.amax(self.soleMesh.vertices,axis=0)[2]
         rotMatrix = np.array([[-1, 0, 0],[0, 1, 0],[0, 0, -1]])
