@@ -52,7 +52,7 @@ class loadWidget(baseWidget):
 
     def loadBasicMesh(self):
         path = str(os.path.dirname(os.path.realpath(__file__)))
-        self.mesh = tm.load(path+"\\..\\resources\\basic_sole.stl")
+        self.mesh = tm.load(path+"\\..\\resources\\scan.obj")
         #We process the mesh so that it is centered and lays flat on the xy plane.
         #We then copy it t a display mesh that will sustain all the tranformation we apply
         self.mesh.vertices -= self.mesh.centroid
