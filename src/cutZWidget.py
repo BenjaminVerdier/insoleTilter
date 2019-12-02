@@ -8,6 +8,8 @@ class cutZWidget(baseWidget):
 
     def __init__(self, nextTab = -1):
         super(cutZWidget, self).__init__(nextTab)
+        self.horValChange = 5
+        self.vertValChange = math.radians(5)
 
     def initCustomUI(self):
 
@@ -34,21 +36,21 @@ class cutZWidget(baseWidget):
         btnLeft.setMinimumSize(5,5)
         btnLeft.resize(25,25)
         btnLeft.ctpIndex = 0
-        btnLeft.val = math.radians(5)
+        btnLeft.val = -self.horValChange
         btnLeft.pressed.connect(self.edgesMoved)
         ctPtsLayout.addWidget(btnLeft)
         btnUp = QPushButton("^")
         btnUp.setMinimumSize(5,5)
         btnUp.resize(25,25)
         btnUp.ctpIndex = 0
-        btnUp.val = math.radians(5)
+        btnUp.val = self.vertValChange
         btnUp.pressed.connect(self.ctrlPtsMoved)
         btnLayout.addWidget(btnUp)
         btnDown = QPushButton("v")
         btnDown.setMinimumSize(5,5)
         btnDown.resize(25,25)
         btnDown.ctpIndex = 0
-        btnDown.val = math.radians(-5)
+        btnDown.val = -self.vertValChange
         btnDown.pressed.connect(self.ctrlPtsMoved)
         btnLayout.addWidget(btnDown)
         ctPtsLayout.addLayout(btnLayout)
@@ -56,7 +58,7 @@ class cutZWidget(baseWidget):
         btnRight.setMinimumSize(5,5)
         btnRight.resize(25,25)
         btnRight.ctpIndex = 0
-        btnRight.val = math.radians(-5)
+        btnRight.val = self.horValChange
         btnRight.pressed.connect(self.edgesMoved)
         ctPtsLayout.addWidget(btnRight)
         for i in range(1,7):
@@ -68,14 +70,14 @@ class cutZWidget(baseWidget):
             btnUp.setMinimumSize(5,5)
             btnUp.resize(25,25)
             btnUp.ctpIndex = i
-            btnUp.val = math.radians(5)
+            btnUp.val = self.vertValChange
             btnUp.pressed.connect(self.ctrlPtsMoved)
             btnLayout.addWidget(btnUp)
             btnDown = QPushButton("v")
             btnDown.setMinimumSize(5,5)
             btnDown.resize(25,25)
             btnDown.ctpIndex = i
-            btnDown.val = math.radians(-5)
+            btnDown.val = -self.vertValChange
             btnDown.pressed.connect(self.ctrlPtsMoved)
             btnLayout.addWidget(btnDown)
             ctPtsLayout.addLayout(btnLayout)
@@ -88,21 +90,21 @@ class cutZWidget(baseWidget):
         btnLeft.setMinimumSize(5,5)
         btnLeft.resize(25,25)
         btnLeft.ctpIndex = 7
-        btnLeft.val = math.radians(5)
+        btnLeft.val = self.horValChange
         btnLeft.pressed.connect(self.edgesMoved)
         ctPtsLayout.addWidget(btnLeft)
         btnUp = QPushButton("^")
         btnUp.setMinimumSize(5,5)
         btnUp.resize(25,25)
         btnUp.ctpIndex = 7
-        btnUp.val = math.radians(5)
+        btnUp.val = self.vertValChange
         btnUp.pressed.connect(self.ctrlPtsMoved)
         btnLayout.addWidget(btnUp)
         btnDown = QPushButton("v")
         btnDown.setMinimumSize(5,5)
         btnDown.resize(25,25)
         btnDown.ctpIndex = 7
-        btnDown.val = math.radians(-5)
+        btnDown.val = -self.vertValChange
         btnDown.pressed.connect(self.ctrlPtsMoved)
         btnLayout.addWidget(btnDown)
         ctPtsLayout.addLayout(btnLayout)
@@ -110,7 +112,7 @@ class cutZWidget(baseWidget):
         btnRight.setMinimumSize(5,5)
         btnRight.resize(25,25)
         btnRight.ctpIndex = 7
-        btnRight.val = math.radians(-5)
+        btnRight.val = -self.horValChange
         btnRight.pressed.connect(self.edgesMoved)
         ctPtsLayout.addWidget(btnRight)
         paramLayout.addLayout(ctPtsLayout)
@@ -139,9 +141,12 @@ class cutZWidget(baseWidget):
         self.soleMesh = transmittedData
         self.soleMeshWithZCut = copy.deepcopy(self.soleMesh)
         self.recompute = True
-        self.start_angle = math.pi/4
-        self.end_angle = 7*math.pi/4
         verts = [np.array(x) for x in self.soleMesh.vertices]
+        minX = np.amin(verts,axis=0)[0]
+        maxX = np.amax(verts,axis=0)[0]
+        self.footLength = maxX - minX
+        self.first_point_x = minX + 0.75*self.footLength
+        self.last_point_x = self.first_point_x - 1.5*self.footLength
         self.z = np.amax(verts,axis=0)[2]
         self.controlpoints = 8*[[0,0,self.z]]
         self.cubeMesh = None
@@ -222,21 +227,27 @@ class cutZWidget(baseWidget):
 
     def initSpline(self):
         verts = [np.array(x) for x in self.soleMesh.vertices]
-        xpos = np.amax(verts,axis=0)[0]
-        def circle_sampler(n):
-            angle_increment = (self.end_angle-self.start_angle)/n
+        minX = np.amin(verts,axis=0)[0]
+
+        minY = np.amin(verts,axis=0)[1]
+        maxY = np.amax(verts,axis=0)[1]
+        def point_sampler(n):
+            pos_increment = (self.first_point_x-self.last_point_x)/(n-1)
             points = []
             for i in range(n):
-                angle = self.start_angle + i*angle_increment
-                points += [[xpos*math.cos(angle),xpos*math.sin(angle),self.controlpoints[i][2]]]
+                x_position = self.first_point_x - i*pos_increment
+                if x_position - minX > 0:
+                    points += [[x_position,maxY,self.controlpoints[i][2]]]
+                else:
+                    points += [[minX - (x_position - minX),minY,self.controlpoints[i][2]]]
             return points
 
-        controlpoints = circle_sampler(8)
+        controlpoints = point_sampler(8)
         contour = []
         for pt in controlpoints:
-            while not self.soleMesh.ray.intersects_any([[0,0,self.z]],[[pt[0],pt[1],pt[2]-self.z]])[0]:
+            while not self.soleMesh.ray.intersects_any([[pt[0],0,self.z]],[[0,pt[1],pt[2]-self.z]])[0]:
                 pt[2] -= 1
-            contour += [self.soleMesh.ray.intersects_location([[0,0,self.z]],[[pt[0],pt[1],pt[2]-self.z]])[0][0]]
+            contour += [self.soleMesh.ray.intersects_location([[pt[0],0,self.z]],[[0,pt[1],pt[2]-self.z]])[0][0]]
 
         self.controlpoints = contour
         self.displayControlPoints()
@@ -355,7 +366,7 @@ class cutZWidget(baseWidget):
         a = math.sqrt(ctp[1]*ctp[1] + ctp[0]*ctp[0])
         b = self.z - ctp[2]
         alpha = math.atan(b/a)
-        ctp[2] -= a * math.tan(alpha-math.radians(5)) - b
+        ctp[2] -= a * math.tan(alpha-self.vertValChange) - b
 
         if self.soleMesh.ray.intersects_any([[0,0,self.z]],[[ctp[0],ctp[1],ctp[2]-self.z]])[0]:
             ctp = self.soleMesh.ray.intersects_location([[0,0,self.z]],[[ctp[0],ctp[1],ctp[2]-self.z]])[0][0]
@@ -365,7 +376,7 @@ class cutZWidget(baseWidget):
         a = math.sqrt(ctp[1]*ctp[1] + ctp[0]*ctp[0])
         b = self.z - ctp[2]
         alpha = math.atan(b/a)
-        ctp[2] -= a * math.tan(alpha-math.radians(5)) - b
+        ctp[2] -= a * math.tan(alpha-self.vertValChange) - b
 
         if self.soleMesh.ray.intersects_any([[0,0,self.z]],[[ctp[0],ctp[1],ctp[2]-self.z]])[0]:
             ctp = self.soleMesh.ray.intersects_location([[0,0,self.z]],[[ctp[0],ctp[1],ctp[2]-self.z]])[0][0]
@@ -405,8 +416,8 @@ class cutZWidget(baseWidget):
         alpha = math.atan(b/a)
         ctp[2] -= a * math.tan(alpha-btn.val) - b
 
-        if self.soleMesh.ray.intersects_any([[0,0,self.z]],[[ctp[0],ctp[1],ctp[2]-self.z]])[0]:
-            ctp = self.soleMesh.ray.intersects_location([[0,0,self.z]],[[ctp[0],ctp[1],ctp[2]-self.z]])[0][0]
+        if self.soleMesh.ray.intersects_any([[ctp[0],0,self.z]],[[0,ctp[1],ctp[2]-self.z]])[0]:
+            ctp = self.soleMesh.ray.intersects_location([[ctp[0],0,self.z]],[[0,ctp[1],ctp[2]-self.z]])[0][0]
         self.controlpoints[btn.ctpIndex] = ctp
         self.displayControlPoints()
 
@@ -414,9 +425,9 @@ class cutZWidget(baseWidget):
     def edgesMoved(self):
         btn = self.sender()
         if btn.ctpIndex == 0:
-            self.start_angle += btn.val
+            self.first_point_x += btn.val
         else:
-            self.end_angle += btn.val
+            self.last_point_x += btn.val
         self.initSpline()
 
 
