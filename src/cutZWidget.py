@@ -255,7 +255,7 @@ class cutZWidget(baseWidget):
     def displayControlPoints(self):
         if self.ctrlPtsPlot:
             self.view.removeItem(self.ctrlPtsPlot)
-        self.ctrlPtsPlot = gl.GLScatterPlotItem(pos=np.array(self.controlpoints),size=10,color=[0,0,1,1])
+        self.ctrlPtsPlot = gl.GLScatterPlotItem(pos=np.array(self.controlpoints),size=10,color=[1,1,1,1])
         self.view.addItem(self.ctrlPtsPlot)
 
     def doSpline(self):
