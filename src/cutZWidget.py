@@ -16,105 +16,78 @@ class cutZWidget(baseWidget):
         self.planeZMesh = None
         self.curvePlot = None
         self.ctrlPtsPlot = None
+        self.curCtrlPtSphere = None
         #Buttons and stuff, to be modified in child class
         paramWidget = QWidget()
         paramLayout = QVBoxLayout()
         paramWidget.setLayout(paramLayout)
-        paramWidget.setMaximumHeight(325)
+        paramWidget.setMaximumHeight(425)
         self.mainLayout.addWidget(paramWidget)
 
         cutLabel = QLabel("Choose where the cut should be located:")
         paramLayout.addWidget(cutLabel)
+
+        #Adding/Removing control points
+        addRemLayout = QHBoxLayout()
+        self.remCtptBtn = QPushButton("-")
+        self.remCtptBtn.pressed.connect(self.remCtpt)
+        addRemLayout.addWidget(self.remCtptBtn)
+        self.addCtptBtn = QPushButton("+")
+        self.addCtptBtn.pressed.connect(self.addCtpt)
+        addRemLayout.addWidget(self.addCtptBtn)
+        paramLayout.addLayout(addRemLayout)
+
         #We start with 8 control points
         ctPtsLayout = QHBoxLayout()
+        self.currentControlPoint = 0
+        self.minControlPoints = 4
 
         btnLayout = QVBoxLayout()
-        name = "Ctrl Pt "+ str(1)
-        ctpLabel = QLabel(name)
-        ctPtsLayout.addWidget(ctpLabel)
-        btnLeft = QPushButton("<")
-        btnLeft.setMinimumSize(5,5)
-        btnLeft.resize(25,25)
-        btnLeft.ctpIndex = 0
-        btnLeft.val = -self.horValChange
-        btnLeft.pressed.connect(self.edgesMoved)
-        ctPtsLayout.addWidget(btnLeft)
+        self.ctptLabel = QLabel("Control Point : 1")
+        ctPtsLayout.addWidget(self.ctptLabel)
+
+
+        self.btnPrev = QPushButton("<<")
+        self.btnPrev.setEnabled(False)
+        self.btnPrev.pressed.connect(self.prevButton)
+        ctPtsLayout.addWidget(self.btnPrev)
+
+        self.btnLeft = QPushButton("<")
+        self.btnLeft.setMinimumSize(5,5)
+        self.btnLeft.resize(25,25)
+        self.btnLeft.val = -self.horValChange
+        self.btnLeft.pressed.connect(self.edgesMoved)
+        ctPtsLayout.addWidget(self.btnLeft)
+
         btnUp = QPushButton("^")
         btnUp.setMinimumSize(5,5)
         btnUp.resize(25,25)
-        btnUp.ctpIndex = 0
         btnUp.val = self.vertValChange
         btnUp.pressed.connect(self.ctrlPtsMoved)
+        btnUp.setMinimumHeight(30)
         btnLayout.addWidget(btnUp)
-        btnDown = QPushButton("v")
-        btnDown.setMinimumSize(5,5)
-        btnDown.resize(25,25)
-        btnDown.ctpIndex = 0
-        btnDown.val = -self.vertValChange
-        btnDown.pressed.connect(self.ctrlPtsMoved)
-        btnLayout.addWidget(btnDown)
-        ctPtsLayout.addLayout(btnLayout)
-        btnRight = QPushButton(">")
-        btnRight.setMinimumSize(5,5)
-        btnRight.resize(25,25)
-        btnRight.ctpIndex = 0
-        btnRight.val = self.horValChange
-        btnRight.pressed.connect(self.edgesMoved)
-        ctPtsLayout.addWidget(btnRight)
-        for i in range(1,7):
-            btnLayout = QVBoxLayout()
-            name = "Ctrl Pt "+ str(i+1)
-            ctpLabel = QLabel(name)
-            ctPtsLayout.addWidget(ctpLabel)
-            btnUp = QPushButton("^")
-            btnUp.setMinimumSize(5,5)
-            btnUp.resize(25,25)
-            btnUp.ctpIndex = i
-            btnUp.val = self.vertValChange
-            btnUp.pressed.connect(self.ctrlPtsMoved)
-            btnLayout.addWidget(btnUp)
-            btnDown = QPushButton("v")
-            btnDown.setMinimumSize(5,5)
-            btnDown.resize(25,25)
-            btnDown.ctpIndex = i
-            btnDown.val = -self.vertValChange
-            btnDown.pressed.connect(self.ctrlPtsMoved)
-            btnLayout.addWidget(btnDown)
-            ctPtsLayout.addLayout(btnLayout)
 
-        btnLayout = QVBoxLayout()
-        name = "Ctrl Pt "+ str(8)
-        ctpLabel = QLabel(name)
-        ctPtsLayout.addWidget(ctpLabel)
-        btnLeft = QPushButton("<")
-        btnLeft.setMinimumSize(5,5)
-        btnLeft.resize(25,25)
-        btnLeft.ctpIndex = 7
-        btnLeft.val = self.horValChange
-        btnLeft.pressed.connect(self.edgesMoved)
-        ctPtsLayout.addWidget(btnLeft)
-        btnUp = QPushButton("^")
-        btnUp.setMinimumSize(5,5)
-        btnUp.resize(25,25)
-        btnUp.ctpIndex = 7
-        btnUp.val = self.vertValChange
-        btnUp.pressed.connect(self.ctrlPtsMoved)
-        btnLayout.addWidget(btnUp)
         btnDown = QPushButton("v")
         btnDown.setMinimumSize(5,5)
         btnDown.resize(25,25)
-        btnDown.ctpIndex = 7
         btnDown.val = -self.vertValChange
         btnDown.pressed.connect(self.ctrlPtsMoved)
+        btnDown.setMinimumHeight(30)
         btnLayout.addWidget(btnDown)
+
         ctPtsLayout.addLayout(btnLayout)
-        btnRight = QPushButton(">")
-        btnRight.setMinimumSize(5,5)
-        btnRight.resize(25,25)
-        btnRight.ctpIndex = 7
-        btnRight.val = -self.horValChange
-        btnRight.pressed.connect(self.edgesMoved)
-        ctPtsLayout.addWidget(btnRight)
+
+        self.btnRight = QPushButton(">")
+        self.btnRight.setMinimumSize(5,5)
+        self.btnRight.resize(25,25)
+        self.btnRight.val = self.horValChange
+        self.btnRight.pressed.connect(self.edgesMoved)
+        ctPtsLayout.addWidget(self.btnRight)
+
+        self.btnNext = QPushButton(">>")
+        self.btnNext.pressed.connect(self.nextButton)
+        ctPtsLayout.addWidget(self.btnNext)
+
         paramLayout.addLayout(ctPtsLayout)
 
         self.doCutZ = False
@@ -146,7 +119,7 @@ class cutZWidget(baseWidget):
         maxX = np.amax(verts,axis=0)[0]
         self.footLength = maxX - minX
         self.first_point_x = minX + 0.75*self.footLength
-        self.last_point_x = self.first_point_x - 1.5*self.footLength
+        self.last_point_x = self.first_point_x - 1.51*self.footLength #there's a bug when they're totally symmetric for an odd number of points
         self.z = np.amax(verts,axis=0)[2]
         self.controlpoints = 8*[[0,0,self.z]]
         self.cubeMesh = None
@@ -242,7 +215,7 @@ class cutZWidget(baseWidget):
                     points += [[minX - (x_position - minX),minY,self.controlpoints[i][2]]]
             return points
 
-        controlpoints = point_sampler(8)
+        controlpoints = point_sampler(len(self.controlpoints))
         contour = []
         for pt in controlpoints:
             while not self.soleMesh.ray.intersects_any([[pt[0],0,self.z]],[[0,pt[1],pt[2]-self.z]])[0]:
@@ -255,8 +228,21 @@ class cutZWidget(baseWidget):
     def displayControlPoints(self):
         if self.ctrlPtsPlot:
             self.view.removeItem(self.ctrlPtsPlot)
-        self.ctrlPtsPlot = gl.GLScatterPlotItem(pos=np.array(self.controlpoints),size=10,color=[1,1,1,1])
+        col = np.ones((len(self.controlpoints),4))
+        col[self.currentControlPoint] = [0,0,1.,1.]
+        self.ctrlPtsPlot = gl.GLScatterPlotItem(pos=np.array(self.controlpoints),size=10,color=col)
         self.view.addItem(self.ctrlPtsPlot)
+
+        if self.curCtrlPtSphere:
+            self.view.removeItem(self.curCtrlPtSphere)
+        glmesh = gl.MeshData.sphere(rows=10, cols=20)
+        colors = np.ones((glmesh.faceCount(), 4), dtype=float)
+        colors[:,0] = 0
+        colors[:,1] = 0
+        glmesh.setFaceColors(colors)
+        self.curCtrlPtSphere = gl.GLMeshItem(meshdata=glmesh)
+        self.curCtrlPtSphere.translate(*self.controlpoints[self.currentControlPoint])
+        self.view.addItem(self.curCtrlPtSphere)
 
     def doSpline(self):
 
@@ -406,11 +392,32 @@ class cutZWidget(baseWidget):
         self.view.addItem(self.cubeMesh)
         """
 
+    def UpdateBtnLabel(self):
+        t = "Control Point : " + str(self.currentControlPoint +1)
+        self.ctptLabel.setText(t)
+
+    def UpdateLeftRightBtns(self):
+        if self.currentControlPoint == 0 or self.currentControlPoint == len(self.controlpoints) - 1:
+            self.btnLeft.setEnabled(True)
+            self.btnRight.setEnabled(True)
+        else:
+            self.btnLeft.setEnabled(False)
+            self.btnRight.setEnabled(False)
+
+        if self.currentControlPoint == len(self.controlpoints) - 1:
+            self.btnNext.setEnabled(False)
+        else:
+            self.btnNext.setEnabled(True)
+
+        if self.currentControlPoint == 0:
+            self.btnPrev.setEnabled(False)
+        else:
+            self.btnPrev.setEnabled(True)
 
     @pyqtSlot()
     def ctrlPtsMoved(self):
         btn = self.sender()
-        ctp = self.controlpoints[btn.ctpIndex].copy()
+        ctp = self.controlpoints[self.currentControlPoint].copy()
         a = math.sqrt(ctp[1]*ctp[1] + ctp[0]*ctp[0])
         b = self.z - ctp[2]
         alpha = math.atan(b/a)
@@ -418,16 +425,16 @@ class cutZWidget(baseWidget):
 
         if self.soleMesh.ray.intersects_any([[ctp[0],0,self.z]],[[0,ctp[1],ctp[2]-self.z]])[0]:
             ctp = self.soleMesh.ray.intersects_location([[ctp[0],0,self.z]],[[0,ctp[1],ctp[2]-self.z]])[0][0]
-        self.controlpoints[btn.ctpIndex] = ctp
+        self.controlpoints[self.currentControlPoint] = ctp
         self.displayControlPoints()
 
     @pyqtSlot()
     def edgesMoved(self):
         btn = self.sender()
-        if btn.ctpIndex == 0:
+        if self.currentControlPoint == 0:
             self.first_point_x += btn.val
         else:
-            self.last_point_x += btn.val
+            self.last_point_x += -btn.val
         self.initSpline()
 
 
@@ -446,7 +453,58 @@ class cutZWidget(baseWidget):
         self.cutFront()
         self.displayMesh()
 
-
     @pyqtSlot()
     def recomputeSpline(self):
         self.doSpline()
+
+    @pyqtSlot()
+    def nextButton(self):
+        self.currentControlPoint += 1
+        if self.currentControlPoint == 1:
+            self.btnPrev.setEnabled(True)
+        self.UpdateBtnLabel()
+        self.UpdateLeftRightBtns()
+        self.displayControlPoints()
+
+
+    @pyqtSlot()
+    def prevButton(self):
+        self.currentControlPoint -= 1
+        if self.currentControlPoint == len(self.controlpoints) - 2:
+            self.btnNext.setEnabled(True)
+        self.UpdateBtnLabel()
+        self.UpdateLeftRightBtns()
+        self.displayControlPoints()
+
+    @pyqtSlot()
+    def remCtpt(self):
+        if self.currentControlPoint == 0:
+            del self.controlpoints[1]
+        elif self.currentControlPoint == len(self.controlpoints)-1:
+            del self.controlpoints[-2]
+            self.currentControlPoint -= 1
+        else:
+            del self.controlpoints[self.currentControlPoint]
+            self.currentControlPoint -= 1
+        if len(self.controlpoints) == self.minControlPoints:
+            self.remCtptBtn.setEnabled(False)
+        self.UpdateBtnLabel()
+        self.UpdateLeftRightBtns()
+        self.initSpline()
+
+    @pyqtSlot()
+    def addCtpt(self):
+        if self.currentControlPoint == len(self.controlpoints)-1:
+            newPt = self.controlpoints[-2].copy()
+            newPt[2] = (newPt[2] + self.controlpoints[-1][2])/2
+            self.controlpoints = self.controlpoints[:-1] + [newPt] + [self.controlpoints[-1]]
+        else:
+            newPt = self.controlpoints[self.currentControlPoint].copy()
+            newPt[2] = (newPt[2] + self.controlpoints[self.currentControlPoint+1][2])/2
+            self.controlpoints = self.controlpoints[:-1] + [newPt] + [self.controlpoints[-1]]
+        self.currentControlPoint += 1
+        if len(self.controlpoints) == self.minControlPoints + 1:
+            self.remCtptBtn.setEnabled(True)
+        self.UpdateBtnLabel()
+        self.UpdateLeftRightBtns()
+        self.initSpline()
