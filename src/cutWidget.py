@@ -4,10 +4,10 @@ import splipy as sp
 import math
 
 
-class cutZWidget(baseWidget):
+class cutWidget(baseWidget):
 
     def __init__(self, nextTab = -1):
-        super(cutZWidget, self).__init__(nextTab)
+        super(cutWidget, self).__init__(nextTab)
         self.horValChange = 5
         self.vertValChange = math.radians(5)
 

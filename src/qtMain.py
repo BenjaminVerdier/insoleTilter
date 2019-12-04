@@ -17,8 +17,7 @@ import pyqtgraph.opengl as gl
 #custom files
 from debugThingies import *
 from loadWidget import *
-from cutZWidget import *
-from cutXWidget import *
+from cutWidget import *
 from rotateXWidget import *
 from insoleMoldExportWidget import *
 
@@ -45,8 +44,8 @@ class MainTabsWidget(QTabWidget):
     def initUI(self):
         loadWid = loadWidget(1)
         self.addTab(loadWid, "Load + Orient")
-        cutZWid = cutZWidget(2)
-        self.addTab(cutZWid, "Cut")
+        cutWid = cutWidget(2)
+        self.addTab(cutWid, "Cut")
         self.setTabEnabled(1, False)
         rotXWid = rotateXWidget(3)
         self.addTab(rotXWid, "Rotate around X axis")
@@ -56,6 +55,6 @@ class MainTabsWidget(QTabWidget):
         self.setTabEnabled(3, False)
 
         loadWid.initCustomUI()
-        cutZWid.initCustomUI()
+        cutWid.initCustomUI()
         rotXWid.initCustomUI()
         stlsWid.initCustomUI()
