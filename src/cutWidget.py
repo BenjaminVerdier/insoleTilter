@@ -121,7 +121,9 @@ class cutWidget(baseWidget):
         self.first_point_x = minX + 0.75*self.footLength
         self.last_point_x = self.first_point_x - 1.51*self.footLength #there's a bug when they're totally symmetric for an odd number of points
         self.z = np.amax(verts,axis=0)[2]
-        self.controlpoints = 8*[[0,0,self.z]]
+        self.controlpoints = 8*[[0,0,self.z/4]]
+        self.controlpoints[3] = [0,0,self.z/16]
+        self.controlpoints[4] = [0,0,self.z/16]
         self.cubeMesh = None
 
         self.displayMesh()

@@ -2,6 +2,7 @@ from baseWidget import *
 
 from enum import Enum, auto
 import sys
+import math
 
 class Display(Enum):
     SOLE = auto()
@@ -87,12 +88,14 @@ class insoleMoldExportWidget(baseWidget):
         self.view.addItem(self.meshItem)
 
 
-    def getOuterVerticesIndexes(self) -> list:
+    def getOuterVerticesIndexes(self, mesh = None) -> list:
         #Convex hull does not work because the 2d projection is not convex.
         #So we check the edges that only belong to one polygon
-        numUniqueEdges = len(self.soleMesh.edges_unique)
+        if mesh == None:
+            mesh = self.soleMesh
+        numUniqueEdges = len(mesh.edges_unique)
         borderEdges = np.zeros(numUniqueEdges)
-        for face in self.soleMesh.faces_unique_edges:
+        for face in mesh.faces_unique_edges:
             borderEdges[face[0]] += 1
             borderEdges[face[1]] += 1
             borderEdges[face[2]] += 1
@@ -100,9 +103,9 @@ class insoleMoldExportWidget(baseWidget):
         #Now that we have the edges, we have all the vertices indices.
         #We need to order them tho.
         #Since every vertex is part of two edges, we take the first edges, take the next vertex and so on
-        neighbors = self.soleMesh.vertex_neighbors
+        neighbors = mesh.vertex_neighbors
         #the casting to list might be useless
-        indices_unordered = [list(x) for x in self.soleMesh.edges_unique[edges]]
+        indices_unordered = [list(x) for x in mesh.edges_unique[edges]]
         indices_ordered = copy.copy(indices_unordered[0])
         for i in range(len(edges) - 2):
             eds = [x for x in indices_unordered if indices_ordered[-1] in x]
@@ -112,131 +115,126 @@ class insoleMoldExportWidget(baseWidget):
                         indices_ordered.append(eds[i][j])
         return indices_ordered
 
-    def makeInsoleAndMold(self):
-        #----------------------------Insole
-        zPos = np.amin(self.soleMesh.vertices,axis=0)[2] - 2
+    def makeInsole(self):
         indices = self.getOuterVerticesIndexes()
         n = len(self.soleMesh.vertices)
-        #New vertices and faces vectors for new mesh
+
         verts = [list(x) for x in self.soleMesh.vertices]
         faces = [list(x) for x in self.soleMesh.faces]
-        #Create first extruded vertex
-        newVertex = copy.copy(verts[indices[0]])
-        newVertex[2] = zPos
-        verts.append(newVertex)
-        for i in range(1,len(indices)):
-            #Create new extruded vertex
-            newVertex = copy.copy(verts[indices[i]])
-            newVertex[2] = zPos
-            verts.append(newVertex)
-            #Create new extruded faces
-            faces.append([n + i, indices[i-1], n + i - 1])
-            faces.append([n + i, indices[i], indices[i-1]])
-        #Create last extruded faces
-        faces.append([n, indices[-1], n + len(indices) - 1])
-        faces.append([n, indices[0], indices[-1]])
-        #Create bottom faces, centroid is in 0,0,0 so we take 0,0,zPos
-        verts.append([0,0,zPos])
-        lastIndex = len(verts) -1
-        n2 = len(faces)
-        bottomVertices = verts[n:]
-        for i in range(n, lastIndex):
-            faces.append([i+1, i, lastIndex])
-        faces.append([n, lastIndex - 1, lastIndex])
-        bottomFaces = faces[n2:]
-        self.insoleMesh = tm.Trimesh(vertices=verts, faces=faces)
 
-        #----------------------------Mold
-        #first step: extract bottom of insole
-        bottomFaces = list(map(lambda x: list(map(lambda y: y-n,x)), bottomFaces))
-        scaleMat = np.array([[1.2,0,0],[0,1.2,0],[0,0,1]])
-        for i in range(len(bottomVertices)):
-            bottomVertices[i] = np.matmul(scaleMat,np.array(bottomVertices[i]))
+        #We make all faces' normals face up-ish
+        normals = self.soleMesh.face_normals
+        for i in range(len(normals)):
+            if normals[i][2] < 0:
+                faces[i] = [faces[i][0],faces[i][2],faces[i][1]]
 
-        zPos2 = np.amax(self.soleMesh.vertices,axis=0)[2] + 5
-        nBottom = len(bottomVertices)
-        #Create first extruded vertex
-        newVertex = copy.copy(bottomVertices[0])
-        newVertex[2] = zPos2
-        bottomVertices.append(newVertex)
-        for i in range(1,nBottom-1):
-            #Create new extruded vertex
-            newVertex = copy.copy(bottomVertices[i])
-            newVertex[2] = zPos2
-            bottomVertices.append(newVertex)
-            #Create new extruded faces
-            bottomFaces.append([i, nBottom + i - 1, i - 1])
-            bottomFaces.append([i, nBottom + i, nBottom + i - 1])
-        #Create last extruded faces
-        bottomFaces.append([0, 2*nBottom - 2, nBottom - 2])
-        bottomFaces.append([0, nBottom, 2*nBottom - 2])
+        #We make all extruded vertices at z = 0 and we invert faces so the extruded faces are facing down
 
-        #Top faces
-        bottomVertices.append([0,0,zPos2])
-        lastIndex2 = len(bottomVertices) -1
-        for i in range(nBottom, lastIndex2):
-            bottomFaces.append([i, i+1, lastIndex2])
-        bottomFaces.append([lastIndex2 - 1, nBottom, lastIndex2])
+        newVerts = [[v[0],v[1],0] for v in verts]
+        newFaces = [[f[0]+n,f[2]+n,f[1]+n] for f in faces]
 
-        for v in bottomVertices:
-            v[2] += .5
+        sideFaces = 2*len(indices)*[[0,0,0]]
+        for k in range(-1,len(indices)-1):
+            i1 = indices[k]
+            i2 = indices[k+1]
+            sideFaces[2*k] = [i1,n+i1,i2]
+            sideFaces[1 + 2*k] = [n+i1,n+i2,i2]
 
-        bloc = tm.Trimesh(vertices=bottomVertices, faces=bottomFaces)
+        insoleVerts = verts + newVerts
+        insoleFaces = faces + newFaces + sideFaces
 
-        self.moldMesh = bloc.difference(self.insoleMesh)
+        self.insoleMesh = tm.Trimesh(vertices=insoleVerts, faces=insoleFaces)
 
+    def makeMold(self):
+        indices = self.getOuterVerticesIndexes()
+        n = len(self.soleMesh.vertices)
+        n2 = len(indices)
 
-        verts = list(self.moldMesh.vertices)
-        faces = list(self.moldMesh.faces)
-        vertToRemove = -1
+        offset = 10
+        verts = [np.array(x) for x in self.soleMesh.vertices]
+        zOffsetPlus = 5
+        zOffsetMinus = 5
+        maxZ = np.amax(verts,axis=0)[2]
+        minZ = np.amin(verts,axis=0)[2]
 
-        for i in range(len(verts)):
-            if abs(verts[i][0]) < 0.1 and abs(verts[i][1]) < 0.1:
-                vertToRemove = i
-                break
-        if vertToRemove > -1:
-            del verts[vertToRemove]
-            facesToDel = []
-            for i in range(len(faces)):
-                if vertToRemove in faces[i]:
-                    facesToDel.append(i)
+        verts = [list(x) for x in self.soleMesh.vertices]
+        faces = [list(x) for x in self.soleMesh.faces]
 
-            for i in sorted(facesToDel, reverse=True):
-                del faces[i]
+        #We make all faces' normals face up-ish
+        normals = self.soleMesh.face_normals
+        for i in range(len(normals)):
+            if normals[i][2] > 0:
+                faces[i] = [faces[i][0],faces[i][2],faces[i][1]]
 
-            for f in self.moldMesh.faces:
-                if f[0] > vertToRemove:
-                    f[0] -= 1
-                if f[1] > vertToRemove:
-                    f[1] -= 1
-                if f[2] > vertToRemove:
-                    f[2] -= 1
+        #We compute all required vertices
 
-        for i in range(len(verts)):
-            if abs(verts[i][0]) < 0.1 and abs(verts[i][1]) < 0.1:
-                vertToRemove = i
-                break
-        if vertToRemove > -1:
-            del verts[vertToRemove]
-            facesToDel = []
-            for i in range(len(faces)):
-                if vertToRemove in faces[i]:
-                    facesToDel.append(i)
+        topVerticesInner = [[verts[i][0],verts[i][1], minZ - zOffsetMinus] for i in indices]
 
-            for i in sorted(facesToDel, reverse=True):
-                del faces[i]
+        topVerticesOuter =  copy.copy(topVerticesInner)
 
-            for f in self.moldMesh.faces:
-                if f[0] > vertToRemove:
-                    f[0] -= 1
-                if f[1] > vertToRemove:
-                    f[1] -= 1
-                if f[2] > vertToRemove:
-                    f[2] -= 1
+        for i in range(n2):
+            curV = topVerticesOuter[i]
+            length = math.sqrt(curV[0]*curV[0] + curV[1]*curV[1])
+            offsetVec = [offset*curV[0]/length, offset*curV[1]/length]
+            topVerticesOuter[i] = [curV[0] + offsetVec[0], curV[1] + offsetVec[1],minZ - zOffsetMinus]
 
-        self.moldMesh = tm.Trimesh(verts,faces)
+        bottomVerticesOuter = [[v[0],v[1], maxZ + zOffsetPlus] for v in topVerticesOuter]
+
+        bottomVerticesInner = [[v[0],v[1], maxZ + zOffsetPlus] for v in verts]
+
+        #We stitch everything together
+        sideFacesInner = 2*len(indices)*[[0,0,0]]
+        for k in range(n2-1):
+            i1 = indices[k]
+            i2 = indices[k+1]
+            sideFacesInner[2*k] = [i1,n+k,i2]
+            sideFacesInner[1 + 2*k] = [n+k,n+k+1,i2]
+        i1 = indices[-1]
+        i2 = indices[0]
+        sideFacesInner[-2] = [i1,n+n2-1,i2]
+        sideFacesInner[-1] = [n+n2-1,n,i2]
+
+        topFaces = 2*len(indices)*[[0,0,0]]
+
+        for k in range(n2-1):
+            topFaces[2*k] = [n+k,n+n2+k,n+k+1]
+            topFaces[1 + 2*k] = [n+n2+k,n+n2+k+1,n+k+1]
+        topFaces[-2] = [n+n2-1,n+2*n2-1,n]
+        topFaces[-1] = [n+2*n2-1,n+n2,n]
+
+        sideFacesOuter = 2*len(indices)*[[0,0,0]]
+
+        for k in range(n2-1):
+            sideFacesOuter[2*k] = [n+n2+k,n+2*n2+k,n+n2+k+1]
+            sideFacesOuter[1 + 2*k] = [n+2*n2+k,n+2*n2+k+1,n+n2+k+1]
+        sideFacesOuter[-2] = [n+2*n2-1,n+3*n2-1,n+n2]
+        sideFacesOuter[-1] = [n+3*n2-1,n+2*n2,n+n2]
+
+        botFacesOuter = 2*len(indices)*[[0,0,0]]
+        for k in range(n2-1):
+            i1 = indices[k]
+            i2 = indices[k+1]
+            botFacesOuter[2*k] = [n+2*n2+k,n+3*n2+i1,n+2*n2+k+1]
+            botFacesOuter[1 + 2*k] = [n+3*n2+i1,n+3*n2+i2,n+2*n2+k+1]
+
+        i1 = indices[-1]
+        i2 = indices[0]
+        botFacesOuter[2*k] = [n+3*n2-1,n+3*n2+i1,n+2*n2]
+        botFacesOuter[1 + 2*k] = [n+3*n2+i1,n+3*n2+i2,n+2*n2]
+
+        botFacesInner = [[f[0]+n+3*n2,f[1]+n+3*n2,f[2]+n+3*n2] for f in faces]
+
+        moldVerts = verts + topVerticesInner + topVerticesOuter + bottomVerticesOuter + bottomVerticesInner
+
+        moldFaces = faces + sideFacesInner + topFaces + sideFacesOuter + botFacesOuter + botFacesInner
+
+        self.moldMesh = tm.Trimesh(vertices=moldVerts, faces=moldFaces)
 
 
+    def makeInsoleAndMold(self):
+        self.makeInsole()
+
+        self.makeMold()
 
         #We flip the mold for better viewing
         zOffset = np.amax(self.soleMesh.vertices,axis=0)[2]
@@ -245,7 +243,6 @@ class insoleMoldExportWidget(baseWidget):
             v = np.array(self.moldMesh.vertices[i])
             self.moldMesh.vertices[i] = np.matmul(rotMatrix,v)
             self.moldMesh.vertices[i][2] += zOffset
-
         tm.repair.fix_normals(self.insoleMesh)
         tm.repair.fix_normals(self.moldMesh)
 
