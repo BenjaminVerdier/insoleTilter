@@ -111,9 +111,17 @@ class cutWidget(baseWidget):
         self.doCutZ = False
 
         #Btn to recompute spline
-        splineBtn = QPushButton("Recompute Spline")
+        splineLayout = QHBoxLayout()
+        splineBtn = QPushButton("Compute Full Spline")
         splineBtn.pressed.connect(self.recomputeSpline)
-        paramLayout.addWidget(splineBtn)
+        splineLayout.addWidget(splineBtn)
+
+        splineBtn = QPushButton("Compute Simple Spline")
+        splineBtn.pressed.connect(self.recomputeSplineSimple)
+        splineLayout.addWidget(splineBtn)
+
+        paramLayout.addLayout(splineLayout)
+
 
         #Btn to cut
         cutBtn = QPushButton("Cut")
@@ -266,7 +274,7 @@ class cutWidget(baseWidget):
         self.curCtrlPtSphere.translate(*self.controlpoints[self.currentControlPoint])
         self.view.addItem(self.curCtrlPtSphere)
 
-    def doSpline(self):
+    def doSpline(self,samples = 300):
 
         def get_spline_points(cont_pts, order = 4, sampling = 150):
             n_control_points = len(cont_pts)
@@ -277,7 +285,7 @@ class cutWidget(baseWidget):
             x = curve.evaluate(t)
             return x
 
-        spline_pts_not_projected = get_spline_points(self.controlpoints, sampling=300)
+        spline_pts_not_projected = get_spline_points(self.controlpoints, sampling=samples)
         #spline_pts_projected = [[0,0,z]]
         spline_pts_projected = []
         for pt in spline_pts_not_projected:
@@ -473,6 +481,12 @@ class cutWidget(baseWidget):
     @pyqtSlot()
     def recomputeSpline(self):
         self.doSpline()
+
+
+    @pyqtSlot()
+    def recomputeSplineSimple(self):
+        self.doSpline(25)
+
 
     @pyqtSlot()
     def moveCamRight(self):
