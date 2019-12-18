@@ -98,13 +98,13 @@ class cutWidget(baseWidget):
         paramLayout.addWidget(splineBtn)
 
         #Btn to cut
-        cutBtn = QPushButton("Cut Top")
-        cutBtn.pressed.connect(self.doCutTop)
+        cutBtn = QPushButton("Cut")
+        cutBtn.pressed.connect(self.doCut)
         paramLayout.addWidget(cutBtn)
 
-        #Btn to cut
-        cutBtn = QPushButton("Cut Front")
-        cutBtn.pressed.connect(self.doCutFront)
+        #Btn to undo cut
+        cutBtn = QPushButton("Undo Cut")
+        cutBtn.pressed.connect(self.undoCut)
         paramLayout.addWidget(cutBtn)
 
         self.initDoneButtonAndShader(paramLayout)
@@ -124,7 +124,7 @@ class cutWidget(baseWidget):
         self.controlpoints = 8*[[0,0,self.z/4]]
         self.controlpoints[3] = [0,0,self.z/16]
         self.controlpoints[4] = [0,0,self.z/16]
-        self.cubeMesh = None
+        self.spline = None
 
         self.displayMesh()
         self.initSpline()
@@ -144,6 +144,8 @@ class cutWidget(baseWidget):
             self.view.removeItem(self.meshItem)
         self.meshItem = gl.GLMeshItem(meshdata=glmesh, shader=self.shader, glOptions=self.glOptions)
         self.view.addItem(self.meshItem)
+        self.displaySpline()
+        self.displayControlPoints()
 
 
     def displayPlaneCutZ(self):
@@ -270,10 +272,16 @@ class cutWidget(baseWidget):
 
         self.spline = spline_pts_projected
 
+        self.displaySpline()
+
+    def displaySpline(self):
+        if self.spline == None:
+            return
         if self.curvePlot:
             self.view.removeItem(self.curvePlot)
-        self.curvePlot = gl.GLLinePlotItem(pos=np.array(spline_pts_projected),width=5,color=[1,0,0,1])
+        self.curvePlot = gl.GLLinePlotItem(pos=np.array(self.spline),width=5,color=[1,0,0,1])
         self.view.addItem(self.curvePlot)
+
 
         #faces = []
         #for i in range(1,len(spline_pts_projected)-1):
@@ -441,18 +449,18 @@ class cutWidget(baseWidget):
 
 
     @pyqtSlot()
-    def doCutTop(self):
+    def doCut(self):
         self.doCutZ = True
         self.recompute = True
         self.cutTop()
+        self.cutFront()
         self.displayMesh()
 
 
     @pyqtSlot()
-    def doCutFront(self):
-        self.doCutZ = True
+    def undoCut(self):
+        self.doCutZ = False
         self.recompute = True
-        self.cutFront()
         self.displayMesh()
 
     @pyqtSlot()
