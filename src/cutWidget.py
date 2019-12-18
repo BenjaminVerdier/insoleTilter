@@ -121,9 +121,9 @@ class cutWidget(baseWidget):
         self.first_point_x = minX + 0.75*self.footLength
         self.last_point_x = self.first_point_x - 1.51*self.footLength #there's a bug when they're totally symmetric for an odd number of points
         self.z = np.amax(verts,axis=0)[2]
-        self.controlpoints = 8*[[0,0,self.z/4]]
-        self.controlpoints[3] = [0,0,self.z/16]
-        self.controlpoints[4] = [0,0,self.z/16]
+        self.controlpoints = 8*[[0,0,self.z/3]]
+        self.controlpoints[3] = [0,0,self.z/4]
+        self.controlpoints[4] = [0,0,self.z/4]
         self.spline = None
 
         self.displayMesh()
@@ -222,9 +222,9 @@ class cutWidget(baseWidget):
         controlpoints = point_sampler(len(self.controlpoints))
         contour = []
         for pt in controlpoints:
-            while not self.soleMesh.ray.intersects_any([[pt[0],0,self.z]],[[0,pt[1],pt[2]-self.z]])[0]:
+            while not self.soleMesh.ray.intersects_any([[pt[0],0,pt[2]]],[[0,pt[1],0]])[0]:
                 pt[2] -= 1
-            contour += [self.soleMesh.ray.intersects_location([[pt[0],0,self.z]],[[0,pt[1],pt[2]-self.z]])[0][0]]
+            contour += [self.soleMesh.ray.intersects_location([[pt[0],0,pt[2]]],[[0,pt[1],0]])[0][0]]
 
         self.controlpoints = contour
         self.displayControlPoints()
@@ -282,17 +282,6 @@ class cutWidget(baseWidget):
         self.curvePlot = gl.GLLinePlotItem(pos=np.array(self.spline),width=5,color=[1,0,0,1])
         self.view.addItem(self.curvePlot)
 
-
-        #faces = []
-        #for i in range(1,len(spline_pts_projected)-1):
-        #    faces += [[i,i+1,0]]
-        #faces += [[len(spline_pts_projected)-1,1,0]]
-
-        #glmesh = gl.MeshData(vertexes=np.array(spline_pts_projected), faces=np.array(faces))
-        #if self.planeZMesh:
-        #    self.view.removeItem(self.planeZMesh)
-        #self.planeZMesh = gl.GLMeshItem(meshdata=glmesh, shader=self.shader, glOptions=self.glOptions)
-        #self.view.addItem(self.planeZMesh)
 
     def cutTop(self):
         #Top part
