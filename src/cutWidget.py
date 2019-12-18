@@ -24,6 +24,24 @@ class cutWidget(baseWidget):
         paramWidget.setMaximumHeight(425)
         self.mainLayout.addWidget(paramWidget)
 
+
+        #Btn to move cam
+        camLayout = QHBoxLayout()
+        camBtn = QPushButton("Cam Left")
+        camBtn.pressed.connect(self.moveCamLeft)
+        camLayout.addWidget(camBtn)
+
+        camBtn = QPushButton("Cam Up")
+        camBtn.pressed.connect(self.moveCamUp)
+        camLayout.addWidget(camBtn)
+
+        camBtn = QPushButton("Cam Right")
+        camBtn.pressed.connect(self.moveCamRight)
+        camLayout.addWidget(camBtn)
+
+        paramLayout.addLayout(camLayout)
+
+
         cutLabel = QLabel("Choose where the cut should be located:")
         paramLayout.addWidget(cutLabel)
 
@@ -455,6 +473,36 @@ class cutWidget(baseWidget):
     @pyqtSlot()
     def recomputeSpline(self):
         self.doSpline()
+
+    @pyqtSlot()
+    def moveCamRight(self):
+        verts = [np.array(x) for x in self.soleMesh.vertices]
+        maxz = np.amax(verts,axis=0)[2]
+        minz = np.amax(verts,axis=0)[2]
+        maxx = np.amax(verts,axis=0)[0]
+        self.view.opts['center'].setZ(maxz/2)
+        self.view.setCameraPosition(distance=2*maxx,elevation = 0, azimuth = 270)
+
+
+    @pyqtSlot()
+    def moveCamLeft(self):
+        verts = [np.array(x) for x in self.soleMesh.vertices]
+        maxz = np.amax(verts,axis=0)[2]
+        minz = np.amax(verts,axis=0)[2]
+        maxx = np.amax(verts,axis=0)[0]
+        self.view.opts['center'].setZ(maxz/2)
+        self.view.setCameraPosition(distance=2*maxx,elevation = 0, azimuth = 90)
+
+
+    @pyqtSlot()
+    def moveCamUp(self):
+        verts = [np.array(x) for x in self.soleMesh.vertices]
+        maxz = np.amax(verts,axis=0)[2]
+        minz = np.amax(verts,axis=0)[2]
+        maxx = np.amax(verts,axis=0)[0]
+        self.view.opts['center'].setZ(maxz/2)
+        self.view.setCameraPosition(distance=2*maxx,elevation = 90, azimuth = 180)
+
 
     @pyqtSlot()
     def nextButton(self):
